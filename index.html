@@ -1,0 +1,2221 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style><script>window.__STANDALONE=true;</script></head><body><title>Simulation</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: the table (status + board) on the left, a rail on the right with players, your hand and the coach. Stacks on phones. */
+:root{
+  --bg:#e4e9e3; --surface:#f8faf5; --surface2:#edf1ea; --line:#c6cfc4; --fg:#18252a; --muted:#56666a;
+  --accent:#1f5a6e; --accent-fg:#ffffff; --accent-soft:#d7e6e8;
+  --sea:#2c6779; --sea-edge:#235666; --good:#2d7339; --warn:#a6531a; --bad:#a92e27; --gold:#e0ad1c;
+  --display:'Alegreya SC', 'Palatino Linotype', Georgia, serif;
+  --body:'Alegreya Sans', 'Gill Sans', 'Segoe UI', system-ui, sans-serif;
+  --mono:'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#111a1d; --surface:#18242a; --surface2:#1f2e34; --line:#2e4048; --fg:#e3ece8; --muted:#94a7a8;
+  --accent:#78bccf; --accent-fg:#0d1a1f; --accent-soft:#1d3a44; --sea:#1d4c5b; --sea-edge:#163d49;
+  --good:#7cc68a; --warn:#e7a066; --bad:#ef8a80; --gold:#f0c341; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#111a1d; --surface:#18242a; --surface2:#1f2e34; --line:#2e4048; --fg:#e3ece8; --muted:#94a7a8;
+  --accent:#78bccf; --accent-fg:#0d1a1f; --accent-soft:#1d3a44; --sea:#1d4c5b; --sea-edge:#163d49;
+  --good:#7cc68a; --warn:#e7a066; --bad:#ef8a80; --gold:#f0c341; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:14px 28px}
+button{font:inherit;color:inherit}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 20px;max-width:1320px;margin:0 auto 12px}
+.brand h1{font-family:var(--display);font-weight:700;font-size:2rem;letter-spacing:.02em;margin:0;line-height:1}
+.brand p{margin:4px 0 0;color:var(--muted);font-size:.92rem}
+.ctrl{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ctrl label{font-size:.85rem;color:var(--muted);display:flex;gap:6px;align-items:center}
+select{font:inherit;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:16px;max-width:1320px;margin:0 auto;align-items:start}
+@media (max-width:960px){.layout{grid-template-columns:minmax(0,1fr)}}
+.table{min-width:0;display:flex;flex-direction:column;gap:10px}
+.rail{min-width:0;display:flex;flex-direction:column;gap:12px}
+
+.btn{border:1px solid var(--line);background:var(--surface);padding:7px 12px;border-radius:7px;cursor:pointer;font-weight:600;font-size:.92rem;line-height:1.2}
+.btn:hover:not(:disabled){border-color:var(--accent)}
+.btn:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.ghost{background:transparent}
+.btn.hint{border-color:var(--gold)}
+
+/* Status strip */
+.status{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;flex-wrap:wrap}
+.dice{display:flex;gap:6px}
+.die{width:34px;height:34px;border-radius:7px;background:#fbf8ef;border:1.5px solid #2b2b2b;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:4px}
+.die i{width:6px;height:6px;border-radius:50%;background:#1d1d1d;place-self:center}
+.die.blank{opacity:.35}
+.smsg{flex:1 1 220px;min-width:0}
+.turnno{font-family:var(--mono);font-size:.72rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.stext{font-weight:700;font-size:1.05rem}
+.sbtns{display:flex;gap:8px;flex-wrap:wrap}
+
+.boardwrap{background:var(--sea-edge);border-radius:12px;overflow:hidden;line-height:0}
+#board{width:100%;height:auto;max-height:76vh;display:block;margin:0 auto;font-family:var(--body)}
+#board .sea{fill:var(--sea)}
+#board .hex{stroke:rgba(0,0,0,.25);stroke-width:1}
+#board .tl{font-size:9.5px;font-weight:800;letter-spacing:.08em;text-anchor:middle;text-transform:uppercase;stroke-width:3.5px;paint-order:stroke;stroke-linejoin:round}
+#board .tok{fill:#f3ead2;stroke:rgba(0,0,0,.45);stroke-width:1.2;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.35))}
+#board .tn{font-family:var(--mono);font-weight:600;font-size:15px;text-anchor:middle;fill:#262626}
+#board .tn.red{fill:#b3261e}
+#board .pdot{fill:#262626}
+#board .pdot.red{fill:#b3261e}
+#board .pier{stroke:#f3ead2;stroke-width:2.5;stroke-dasharray:3 3;opacity:.8}
+#board .pt{font-family:var(--mono);font-size:10px;font-weight:600;text-anchor:middle;fill:#1e1e1e}
+#board .pt2{font-size:7.5px;font-weight:700;text-anchor:middle;fill:#1e1e1e;text-transform:uppercase;letter-spacing:.04em}
+#board .road{stroke-width:6.5;stroke-linecap:round}
+#board .road-o{stroke:#151515;stroke-width:9.5;stroke-linecap:round}
+#board .spot{fill:rgba(255,255,255,.9);stroke:#10303a;stroke-width:2;cursor:pointer;animation:pulse 1.4s ease-in-out infinite}
+#board .spot:hover{fill:var(--gold)}
+#board .ring{fill:rgba(255,255,255,.18);stroke:#fff;stroke-width:3;stroke-dasharray:4 3;cursor:pointer;pointer-events:all;animation:pulse 1.4s ease-in-out infinite}
+#board .ring:hover{fill:rgba(224,173,28,.45);stroke:var(--gold)}
+@media (prefers-reduced-motion:reduce){#board .ring{animation:none}}
+#board .ehit{stroke:transparent;stroke-width:20;cursor:pointer}
+#board .espot{stroke:rgba(255,255,255,.85);stroke-width:6;stroke-linecap:round;stroke-dasharray:5 5;pointer-events:none}
+#board .ehit:hover + .espot{stroke:var(--gold);stroke-dasharray:none}
+#board .hspot{fill:rgba(255,255,255,.14);stroke:#fff;stroke-width:2.5;stroke-dasharray:6 4;cursor:pointer}
+#board .hspot:hover{fill:rgba(255,255,255,.32)}
+#board .hint{fill:none;stroke:var(--gold);stroke-width:4.5}
+#board .callout rect{fill:var(--gold);stroke:#2a2105;stroke-width:1.2;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}
+#board .callout text{font-size:11px;font-weight:800;text-anchor:middle;fill:#231b02}
+.btn.glow{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold);animation:glow 1.2s ease-in-out infinite}
+@keyframes glow{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--gold) 45%,transparent)}}
+@media (prefers-reduced-motion:reduce){.btn.glow{animation:none}}
+#board .hintE{stroke:var(--gold);stroke-width:9;stroke-linecap:round;opacity:.9;pointer-events:none}
+@keyframes pulse{50%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){#board .spot{animation:none}}
+
+.oppgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+@media (max-width:700px){.oppgrid{grid-template-columns:minmax(0,1fr)}}
+.ocard{border:1px solid var(--line);border-radius:9px;padding:10px;background:var(--surface2);display:flex;flex-direction:column;gap:8px;min-width:0}
+.ocard.top{border-color:var(--warn);box-shadow:0 0 0 2px color-mix(in srgb,var(--warn) 30%,transparent)}
+.ohead{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.ohead .pname{flex:1}
+.pill{font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px}
+.pill.threat{background:var(--warn);color:#fff}
+.pill.lvl{background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+.oplan{font-family:var(--display);font-size:1.3rem;font-weight:700;line-height:1.1}
+.odesc{font-size:.82rem;color:var(--muted);margin-top:2px}
+.omain{background:var(--surface);border-radius:7px;padding:8px}
+.omain .lab{display:flex;justify-content:space-between;gap:6px;font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;font-weight:800;color:var(--muted)}
+.omain .big{font-size:1.05rem;font-weight:800;margin:2px 0 5px}
+.bar{height:9px;border-radius:5px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:5px}
+.omain .need{font-size:.82rem;margin-top:5px}
+.orows{display:flex;flex-direction:column;gap:5px}
+.orow{display:grid;grid-template-columns:7.5em minmax(0,1fr) auto;gap:6px;align-items:center;font-size:.78rem}
+.orow .bar{height:5px}
+.orow span:last-child{color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.oprod{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;align-items:end;height:34px}
+.oprod div{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;font-size:.62rem;color:var(--muted);font-family:var(--mono)}
+.oprod b{display:block;width:70%;border-radius:2px 2px 0 0;min-height:2px}
+.oslow{font-size:.8rem;border-top:1px dashed var(--line);padding-top:6px}
+.oslow b{color:var(--warn)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.82rem;color:var(--muted);line-height:1.3}
+.legend span{display:inline-flex;gap:5px;align-items:center}
+
+/* Panels */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px}
+.ph{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}
+.ph h2{font-family:var(--display);font-size:1.15rem;margin:0;font-weight:700;letter-spacing:.02em}
+.muted{color:var(--muted)}
+.small{font-size:.82rem}
+
+.players{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pcard{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:8px 10px;display:grid;grid-template-columns:auto 1fr auto;gap:2px 8px;align-items:center}
+.pcard.cur{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.pdot{width:14px;height:14px;border-radius:4px;border:1.5px solid #1b1b1b}
+.pname{font-weight:800}
+.pvp{font-family:var(--mono);font-size:.95rem;text-align:right}
+.pvp b{font-size:1.15rem}
+.pstats{grid-column:1/-1;font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.badges{grid-column:1/-1;display:flex;gap:4px;flex-wrap:wrap}
+.badge{font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:4px;background:var(--accent-soft);color:var(--fg)}
+
+.reslist{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:10px}
+.res{border-radius:8px;padding:6px 4px 5px;text-align:center;background:var(--surface2);border:1px solid var(--line)}
+.res .sw{display:block;height:6px;border-radius:3px;margin:0 6px 5px}
+.res b{display:block;font-family:var(--mono);font-size:1.25rem;line-height:1.1}
+.res small{font-size:.74rem;color:var(--muted)}
+.count{font-family:var(--mono);font-size:.85rem}
+.count.over{color:var(--bad);font-weight:700}
+
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.act{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left}
+.cost{display:flex;gap:3px;flex-wrap:wrap}
+.cc{width:13px;height:13px;border-radius:3px;border:1px solid rgba(0,0,0,.35)}
+.act .lbl{display:flex;justify-content:space-between;width:100%;gap:6px}
+.act .why{font-weight:400;font-size:.74rem;color:var(--muted)}
+.pieces{font-size:.8rem;color:var(--muted);margin-top:8px;font-variant-numeric:tabular-nums}
+.devs{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.dev{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px;border:1px dashed var(--line);border-radius:7px}
+.dev div{min-width:0}
+.dev b{display:block;font-size:.9rem}
+.dev span{font-size:.78rem;color:var(--muted)}
+
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:-4px -4px 10px}
+.tab{background:none;border:none;padding:6px 12px;cursor:pointer;font-weight:700;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--fg);border-bottom-color:var(--accent)}
+.tab .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);margin-left:5px;vertical-align:middle}
+.feed{display:flex;flex-direction:column;gap:8px;max-height:430px;overflow:auto;padding-right:2px}
+.msg{padding:8px 10px;border-radius:8px;background:var(--surface2)}
+.msg .tag{font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.msg.rule .tag{color:var(--accent)} .msg.tip .tag{color:var(--muted)} .msg.warn .tag{color:var(--warn)} .msg.good .tag{color:var(--good)} .msg.hint .tag{color:var(--gold)}
+.msg.warn{background:color-mix(in srgb, var(--warn) 10%, var(--surface2))}
+.msg h3{margin:1px 0 2px;font-size:.98rem}
+.msg p{margin:0;font-size:.9rem}
+.msg .t{font-family:var(--mono);font-size:.68rem;color:var(--muted);float:right}
+.rules{max-height:430px;overflow:auto;font-size:.9rem}
+.rules h3{font-family:var(--display);font-size:1.02rem;margin:12px 0 4px}
+.rules h3:first-child{margin-top:0}
+.rules p,.rules li{margin:0 0 5px;max-width:65ch}
+.rules ul{padding-left:18px;margin:0}
+.ctab{border-collapse:collapse;width:100%;font-size:.86rem}
+.ctab td{padding:4px 4px;border-bottom:1px solid var(--line);vertical-align:middle}
+.loglist{max-height:300px;overflow:auto;font-size:.85rem;display:flex;flex-direction:column;gap:3px}
+.loglist div{padding:2px 0;border-bottom:1px dotted var(--line)}
+.loglist .lt{font-family:var(--mono);font-size:.7rem;color:var(--muted);margin-right:6px}
+.ask{display:flex;flex-direction:column;gap:10px}
+.ask .feed{max-height:360px}
+.bubble{padding:8px 10px;border-radius:8px;font-size:.92rem;max-width:100%;overflow-wrap:anywhere}
+.bubble.q{background:var(--accent-soft);align-self:flex-end;max-width:88%;font-weight:600}
+.bubble.a{background:var(--surface2)}
+.bubble.a p{margin:0 0 6px}.bubble.a p:last-child{margin:0}
+.bubble.a ul{margin:0 0 6px;padding-left:18px}
+.bubble.err{color:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chipq{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 10px;font-size:.82rem;cursor:pointer}
+.chipq:hover:not(:disabled){border-color:var(--accent)}
+.chipq:disabled{opacity:.5;cursor:not-allowed}
+#askBox{width:100%;font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;resize:vertical;min-height:58px}
+#askBox:focus-visible{outline:3px solid var(--gold);outline-offset:1px}
+.askrow{display:flex;align-items:center;gap:8px;margin-top:6px}
+.askrow .small{flex:1;min-width:0}
+.hist{display:grid;grid-template-columns:repeat(11,1fr);gap:3px;align-items:end;height:90px;margin:8px 0 2px}
+.hist .col{position:relative;height:100%;display:flex;align-items:flex-end;justify-content:center}
+.hist .bar{width:70%;background:var(--accent);border-radius:2px 2px 0 0}
+.hist .exp{position:absolute;left:8%;right:8%;border-top:2px dashed var(--warn)}
+.histx{display:grid;grid-template-columns:repeat(11,1fr);gap:3px;font-family:var(--mono);font-size:.7rem;text-align:center;color:var(--muted)}
+
+/* Modal */
+.overlay{position:fixed;inset:0;background:rgba(10,20,24,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.dialog{background:var(--surface);color:var(--fg);border-radius:12px;border:1px solid var(--line);max-width:520px;width:100%;max-height:90vh;overflow:auto;padding:18px}
+.dialog h2{font-family:var(--display);margin:0 0 4px;font-size:1.4rem}
+.dialog p{margin:0 0 10px}
+.steppers{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:8px 0 12px}
+.stp{border:1px solid var(--line);border-radius:8px;padding:6px 4px;text-align:center;background:var(--surface2)}
+.stp .sw{display:block;height:6px;border-radius:3px;margin:0 6px 4px}
+.stp b{font-family:var(--mono);font-size:1.2rem;display:block}
+.stp small{display:block;font-size:.72rem;color:var(--muted)}
+.stp .row{display:flex;justify-content:center;gap:4px;margin-top:4px}
+.stp .row button{width:28px;height:26px;padding:0;border-radius:5px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-weight:800}
+.stp.sel{outline:3px solid var(--accent);outline-offset:-2px;cursor:pointer}
+.stp.pick{cursor:pointer}
+.stp.pick:disabled{opacity:.4;cursor:not-allowed}
+.drow{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px}
+.resp{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line)}
+.msg.grade .tag{color:var(--muted)}
+.msg.g-best .tag,.gpill.g-best{color:var(--good)}
+.msg.g-good .tag,.gpill.g-good{color:var(--accent)}
+.msg.g-inacc .tag,.gpill.g-inacc{color:var(--gold)}
+.msg.g-mist .tag,.gpill.g-mist{color:var(--warn)}
+.msg.g-blun .tag,.gpill.g-blun{color:var(--bad)}
+.msg.g-mist{background:color-mix(in srgb,var(--warn) 9%,var(--surface2))}
+.msg.g-blun{background:color-mix(in srgb,var(--bad) 10%,var(--surface2))}
+.gpill{font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.owp{display:flex;align-items:baseline;gap:8px}
+.owp-n{font-family:var(--mono);font-size:1.6rem;font-weight:600;line-height:1}
+.owp .bar{flex:1;align-self:center}
+.acc{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:6px 0 8px;text-align:center}
+.acc div{border:1px solid var(--line);border-radius:7px;padding:5px 2px}
+.acc b{display:block;font-family:var(--mono);font-size:1.15rem}
+.acc span{font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.ctrrow{display:flex;gap:8px;margin-bottom:4px}
+#ctrBox{flex:1;min-width:0;font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:7px 9px}
+#ctrBox:focus-visible{outline:3px solid var(--gold);outline-offset:1px}
+.chatform{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
+#chatBox{flex:1 1 200px;min-width:0;font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:7px 9px}
+#chatBox:focus-visible{outline:3px solid var(--gold);outline-offset:1px}
+#chatIdeas{margin-top:6px}
+.talklist{max-height:160px;overflow:auto;display:flex;flex-direction:column;gap:4px;font-size:.88rem}
+.tline{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.tline .pdot{width:10px;height:10px;border-width:1px;align-self:center}
+.tline .lt{font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+.persona{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+@media (max-width:600px){.persona{grid-template-columns:minmax(0,1fr)}}
+.pers{border:1px solid var(--line);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{flex:1 1 90px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;cursor:pointer;text-align:left}
+.seg button span{font-size:.76rem;color:var(--muted)}
+.seg button.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.seg button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.seatno{font-family:var(--mono);font-size:.68rem;font-weight:600;color:var(--muted);margin-left:2px}
+.offer-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:6px 0 12px}
+.chip-r{display:inline-flex;align-items:center;gap:5px;font-weight:700;margin-right:6px}
+.ctrl .chk{display:flex;gap:6px;align-items:center}
+.over-scores{width:100%;border-collapse:collapse;margin:8px 0 14px;font-variant-numeric:tabular-nums}
+.over-scores td,.over-scores th{text-align:left;padding:5px 4px;border-bottom:1px solid var(--line);font-size:.9rem}
+.over-scores th{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.review li{margin-bottom:6px}
+.sec{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;font-weight:800;color:var(--muted);margin:12px 0 4px}
+</style>
+
+<header class="top">
+  <div class="brand">
+    <h1>Simulation</h1>
+    <p>A four-player practice table for the classic hex-island trading game, with a coach watching your moves.</p>
+  </div>
+  <div class="ctrl">
+    <label for="diff">Bots
+      <select id="diff"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select>
+    </label>
+    <label class="chk" for="alerts"><input type="checkbox" id="alerts"> Take-back prompts</label>
+    <label for="speed">Opponent speed
+      <select id="speed"><option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option></select>
+    </label>
+    <button class="btn" id="newGame" type="button">New game</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="table">
+    <div id="status" class="status" aria-live="polite"></div>
+    <div class="boardwrap"><svg id="board" role="img" aria-label="Game board"></svg></div>
+    <div class="legend" id="legend"></div>
+    <section class="panel" aria-labelledby="talkTitle"><div class="ph"><h2 id="talkTitle">Table talk</h2><span class="small muted">Requests, counter-offers, refusals and alliances</span></div><div id="talk" class="talklist" aria-live="polite"></div>
+      <form id="chatForm" class="chatform"><label class="small muted" for="chatTo">To</label>
+        <select id="chatTo"><option value="all">Everyone</option><option value="1">Mara</option><option value="2">Theo</option><option value="3">Ines</option></select>
+        <input id="chatBox" type="text" autocomplete="off" placeholder="Say something… e.g. “Theo, let’s team up against Mara”" aria-label="Message to the table">
+        <button class="btn" type="submit" id="chatSend">Send</button></form>
+      <div class="chips" id="chatIdeas"></div></section>
+    <section class="panel opp" aria-labelledby="oppTitle"><div class="ph"><h2 id="oppTitle">Opponent watch</h2><span class="small muted">Plans are read from what you can see. Win chances come from 100 simulated games from the current position, with hidden cards re-dealt.</span></div><div id="opp" class="oppgrid"></div></section>
+  </section>
+  <aside class="rail">
+    <div id="players" class="players"></div>
+    <div id="hand" class="panel"></div>
+    <div class="panel">
+      <div class="tabs" role="tablist">
+        <button class="tab" data-tab="coach" type="button">Coach</button>
+        <button class="tab" data-tab="ask" type="button">Ask Claude</button>
+        <button class="tab" data-tab="rules" type="button">Rules</button>
+        <button class="tab" data-tab="log" type="button">Log &amp; dice</button>
+      </div>
+      <div id="tabbody"></div>
+    </div>
+  </aside>
+</main>
+<div id="modal"></div>
+
+<script>
+'use strict';
+/* ---------- Constants ---------- */
+const PIPS={2:1,3:2,4:3,5:4,6:5,8:5,9:4,10:3,11:2,12:1};
+const RES=['wood','brick','sheep','wheat','ore'];
+const RL={wood:'Wood',brick:'Brick',sheep:'Sheep',wheat:'Wheat',ore:'Ore'};
+const TERR={wood:'Forest',brick:'Hills',sheep:'Pasture',wheat:'Fields',ore:'Mountains',desert:'Desert'};
+const TCOL={wood:'#3d6b47',brick:'#b45f3c',sheep:'#94bd63',wheat:'#e2b545',ore:'#878e97',desert:'#d8c79c'};
+const TTXT={wood:'#f2efe4',brick:'#fbefe6',sheep:'#21321a',wheat:'#3b2c08',ore:'#f4f4f4',desert:'#4a3f22'};
+const COST={road:{wood:1,brick:1},settlement:{wood:1,brick:1,sheep:1,wheat:1},city:{wheat:2,ore:3},dev:{sheep:1,wheat:1,ore:1}};
+const DEVNAME={knight:'Knight',vp:'Victory Point',road:'Road Building',plenty:'Year of Plenty',mono:'Monopoly'};
+const DEVDESC={knight:'Move the robber and steal a card. Counts toward Largest Army.',vp:'Hidden +1 VP. Counts automatically.',road:'Place 2 roads for free.',plenty:'Take any 2 cards from the bank.',mono:'Name a resource. Every opponent hands you all of it.'};
+const SEATS=[{name:'You',color:'#c9372c'},{name:'Mara',color:'#2d64c8'},{name:'Theo',color:'#e5891b'},{name:'Ines',color:'#f1eee4'}];
+const BOTS=()=>G.players.filter(o=>o.i>0).map(o=>o.i);
+const ALL=()=>G.players.map(o=>o.i);
+const NP=()=>(G&&G.players?G.players.length:4);
+const TABLE={2:{margin:0.5,session:0.6,trades:2,settleBias:0.5,mono:3},3:{margin:0.2,session:0.85,trades:1,settleBias:0.3,mono:3},4:{margin:0,session:1,trades:0,settleBias:0,mono:4}};
+const TBL=()=>TABLE[NP()]||TABLE[4];
+const TABLE_TIPS={2:'Two players: every trade with your opponent helps them as much as you, so the bot drives a hard bargain and leans on the bank and harbours instead. The robber always lands on one of you, and Longest Road and Largest Army are straight head-to-head races.',
+  3:'Three players: the board is roomier, so open corners are worth more and the bots expand early. With only two opponents, a single bot will freeze out a runaway leader on its own, and trades are a little stingier.',
+  4:'Four players: the classic table. The board fills up fast, trading is lively, and the bots will team up against whoever pulls ahead.'};
+const SPEEDS={slow:1250,normal:700,fast:240};
+const LEVELS={
+  easy:{label:'Easy',valNoise:0.35,sessionRate:0.45,counterRate:0.25,noise:6,skip:0.3,roadBias:0.45,impulseDev:0.35,randRobber:0.5,margin:0,refuseAt:9,offerP:0.4,generous:true,greedy:false,trades:1,etb:false,manageHand:false,showRead:true},
+  medium:{label:'Medium',valNoise:0.2,sessionRate:0.55,counterRate:0.45,noise:1.6,skip:0.1,roadBias:0.2,impulseDev:0.15,randRobber:0.15,margin:0.25,refuseAt:8,offerP:0.5,generous:false,greedy:false,trades:2,etb:false,manageHand:false,showRead:true},
+  sim:{label:'Sim',valNoise:0,sessionRate:0,counterRate:0,noise:0.4,skip:0,roadBias:0.06,impulseDev:0,randRobber:0,margin:0.3,refuseAt:8,offerP:0,generous:false,greedy:false,trades:2,etb:false,manageHand:true,showRead:false},
+  hard:{label:'Hard',valNoise:0.1,sessionRate:0.65,counterRate:0.6,noise:0.25,skip:0,roadBias:0.04,impulseDev:0,randRobber:0,margin:0.45,refuseAt:7,offerP:0.6,generous:false,greedy:true,trades:3,etb:true,manageHand:true,showRead:false}
+};
+let DIFF='medium',ALERTS=true;
+try{DIFF=localStorage.getItem('hl-diff')||'medium';ALERTS=localStorage.getItem('hl-alerts')!=='off';}catch(e){}
+const lvl=()=>LEVELS[(G&&G.diff)||DIFF]||LEVELS.medium;
+
+const RULECARDS={
+  welcome:['Welcome to the table','You play red against the bots. First to 10 victory points on their own turn wins. This feed explains each rule the first time it comes up and flags moves worth rethinking. Press Best move whenever you are unsure: it highlights the strongest play on the board.'],
+  setup:['Setup: your first settlement','Everyone places a settlement and a road, then again in reverse order, so the last player places twice in a row. Settlements sit on corners where hexes meet, and no two settlements may be on neighbouring corners. Each dot under a number is a 1-in-36 chance per roll, so 6 and 8 (five dots) pay most often.'],
+  setupRoad:['Now a road','Your road must touch the settlement you just placed. Point it at the corner you want next. New settlements must be two road lengths from any other settlement.'],
+  second:['The second settlement pays out','Your second settlement immediately gives you one card from every hex it touches. Use it to cover resources the first one is missing.'],
+  roll:['Your turn: roll first','Each turn starts with a roll. Every hex showing that number pays its resource to each settlement (1 card) or city (2 cards) on its corners. Then trade and build in any order, and end your turn.'],
+  build:['Building','Road: Wood + Brick. Settlement (1 VP): Wood + Brick + Sheep + Wheat, on a corner your road reaches. City (2 VP): 2 Wheat + 3 Ore, replaces a settlement and pays double. Development card: Sheep + Wheat + Ore.'],
+  seven:['A 7 was rolled','No hex produces on a 7. Anyone holding more than 7 cards discards half, rounded down. Then the roller moves the robber and steals one random card.'],
+  robber:['Move the robber','Pick any other hex. It stops producing while the robber sits there, and you steal one random card from a player with a building on it.'],
+  discard:['Discard half your hand','You have more than 7 cards, so you must give back half, rounded down. Keep what you need for your next build.'],
+  trade:['Trading','The bank always swaps 4 identical cards for 1. A 3:1 harbour swaps any 3 identical cards; a 2:1 harbour swaps 2 of its named resource. You use a harbour by having a settlement or city on one of its two corners. You can also offer deals to the other players on your turn.'],
+  dev:['Development cards','Play one per turn, at any moment of your turn (even before rolling), but never on the turn you bought it. Victory Point cards stay hidden and count automatically.'],
+  chat:['Talking to the table','Bots react to what you say: alliance offers, robber deals, promises, threats, bluffs and warnings. They remember promises and grudges, and how easily they’re persuaded depends on their personality and the difficulty.'],
+  offers:['Trade offers','On their turn, bots may offer you a deal. Accept only if it helps your next build more than it helps theirs, and be wary of anyone near 10 points.'],
+  ports:['Harbours','Your building sits on a harbour corner, so your bank trades now use its better rate. The trade window applies it for you.']
+};
+const REVIEW_TIPS={
+  weakSpot:'Count pips before you place. A 6 or 8 is worth five 2s or 12s. Aim for 10+ pips per starting settlement spread over three resources.',
+  missedBuild:'Before ending a turn, check your hand against the build costs. An unbuilt city is a lost point and lost income.',
+  missedTrade:'Use the bank and harbours. Swapping spare cards for the one you lack is worth it when it finishes a city or settlement.',
+  bigHand:'Keep your hand at 7 or fewer when you end your turn. A 7 comes up one roll in six.',
+  robberSelf:'Never block your own hex with the robber.',
+  robberWeak:'Put the robber on the leader’s best hex, not on whoever is easiest to hit.',
+  feedLeader:'Stop trading with anyone at 7 or more points. Every card they get brings their win closer.',
+  spentWrong:'When you can afford a settlement or city, it usually beats a road or a development card.',
+  brokePromise:'Broken promises cost trust with everyone, not just the player you broke it to. Only promise what you can keep.',
+  badDeal:'Before accepting an offer, ask what it does for your next build and what it does for theirs. Never hand the leader the card they need.',
+  missedDeal:'When an offer completes one of your builds and the other player isn’t close to winning, take it.'
+};
+
+/* ---------- Helpers ---------- */
+let G=null, UI=null, GAME_ID=0, waits={};
+const $=s=>document.querySelector(s);
+const rnd=n=>Math.floor(Math.random()*n);
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=rnd(i+1);[a[i],a[j]]=[a[j],a[i]];}return a;}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function maxBy(a,f){let b=null,bv=-Infinity;for(const x of a){const v=f(x);if(v>bv){bv=v;b=x;}}return b;}
+function minBy(a,f){return maxBy(a,x=>-f(x));}
+function waitFor(k){return new Promise(r=>{waits[k]=r;});}
+function resume(k,v){const r=waits[k];if(r){delete waits[k];r(v);}}
+let speed='normal';
+try{speed=localStorage.getItem('hl-speed')||'normal';}catch(e){}
+const spd=()=>SPEEDS[speed]||700;
+const me=()=>G.players[0];
+const handCount=p=>RES.reduce((s,r)=>s+p.res[r],0);
+const nm=pi=>G.players[pi].name;
+function afford(p,c){return Object.keys(c).every(r=>p.res[r]>=c[r]);}
+function missing(p,c){return Object.keys(c).reduce((s,r)=>s+Math.max(0,c[r]-p.res[r]),0);}
+function pay(p,c){for(const r in c){p.res[r]-=c[r];G.bank[r]+=c[r];}}
+function give(p,r,n){const k=Math.min(n,G.bank[r]);p.res[r]+=k;G.bank[r]-=k;return k;}
+function sw(r){return `<span class="cc" style="background:${TCOL[r]}" title="${RL[r]}"></span>`;}
+function costChips(c){let s='';for(const r in c)for(let i=0;i<c[r];i++)s+=sw(r);return `<span class="cost">${s}</span>`;}
+function list(a){return a.length<2?a.join(''):a.slice(0,-1).join(', ')+' and '+a[a.length-1];}
+
+/* ---------- Board ---------- */
+function buildBoard(){
+  const R=60,S3=Math.sqrt(3);
+  const coords=[];for(let q=-2;q<=2;q++)for(let r=-2;r<=2;r++)if(Math.abs(q+r)<=2)coords.push([q,r]);
+  const terr=shuffle(['wood','wood','wood','wood','brick','brick','brick','sheep','sheep','sheep','sheep','wheat','wheat','wheat','wheat','ore','ore','ore','desert']);
+  const hexes=coords.map(([q,r],i)=>({id:i,q,r,x:R*S3*(q+r/2),y:R*1.5*r,res:terr[i],num:null,verts:[],edges:[]}));
+  const key={};hexes.forEach(h=>key[h.q+','+h.r]=h);
+  const DIRS=[[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]];
+  hexes.forEach(h=>h.nb=DIRS.map(([a,b])=>key[(h.q+a)+','+(h.r+b)]).filter(Boolean).map(n=>n.id));
+  const NUMS=[2,3,3,4,4,5,5,6,6,8,8,9,9,10,10,11,11,12];
+  const red=n=>n===6||n===8;
+  for(let t=0;t<3000;t++){
+    const ns=shuffle(NUMS.slice());let k=0;
+    hexes.forEach(h=>h.num=h.res==='desert'?null:ns[k++]);
+    if(hexes.every(h=>!red(h.num)||h.nb.every(n=>!red(hexes[n].num))))break;
+  }
+  const verts=[],vmap={},edges=[],emap={};
+  hexes.forEach(h=>{
+    for(let i=0;i<6;i++){
+      const a=Math.PI/180*(60*i-30),x=h.x+R*Math.cos(a),y=h.y+R*Math.sin(a);
+      const k=Math.round(x)+'_'+Math.round(y);
+      let v=vmap[k];
+      if(!v){v={id:verts.length,x,y,hexes:[],adj:[],edges:[],owner:null,city:false,port:null};verts.push(v);vmap[k]=v;}
+      v.hexes.push(h.id);h.verts.push(v.id);
+    }
+    for(let i=0;i<6;i++){
+      const a=h.verts[i],b=h.verts[(i+1)%6],k=Math.min(a,b)+'-'+Math.max(a,b);
+      let e=emap[k];
+      if(!e){e={id:edges.length,v:[a,b],hexes:[],owner:null};edges.push(e);emap[k]=e;
+        verts[a].adj.push(b);verts[b].adj.push(a);verts[a].edges.push(e.id);verts[b].edges.push(e.id);}
+      e.hexes.push(h.id);h.edges.push(e.id);
+    }
+  });
+  const mid=e=>{const a=verts[e.v[0]],b=verts[e.v[1]];return[(a.x+b.x)/2,(a.y+b.y)/2];};
+  const coast=edges.filter(e=>e.hexes.length===1).sort((a,b)=>{const[ax,ay]=mid(a),[bx,by]=mid(b);return Math.atan2(ay,ax)-Math.atan2(by,bx);});
+  const types=shuffle(['any','any','any','any','wood','brick','sheep','wheat','ore']);
+  const off=rnd(3);
+  const ports=[0,3,7,10,13,17,20,23,27].map((ix,k)=>{
+    const e=coast[(ix+off)%coast.length];const[a,b]=e.v.map(i=>verts[i]);const h=hexes[e.hexes[0]];
+    const[mx,my]=mid(e);a.port=b.port=types[k];
+    return{type:types[k],v:[a.id,b.id],x:mx+(mx-h.x)*0.66,y:my+(my-h.y)*0.66};
+  });
+  const SR=5.25*R;
+  const sea=[0,1,2,3,4,5].map(i=>{const a=Math.PI/3*i;return(SR*Math.cos(a)).toFixed(1)+','+(SR*Math.sin(a)).toFixed(1);}).join(' ');
+  const vbH=SR*Math.sin(Math.PI/3)+6;
+  return{hexes,verts,edges,ports,seaPoly:sea,vb:`${-SR-4} ${-vbH} ${2*SR+8} ${2*vbH}`};
+}
+
+/* ---------- Game state ---------- */
+function newGame(seat,np){
+  np=Math.max(2,Math.min(4,np||4));
+  const B=buildBoard();
+  const auto=typeof window!=='undefined'&&window.__AUTO;
+  G=Object.assign(B,{
+    players:SEATS.slice(0,np).map((s,i)=>({i,name:s.name,color:s.color,bot:i>0||!!auto,res:{wood:0,brick:0,sheep:0,wheat:0,ore:0},dev:[],knights:0,roadsLeft:15,settLeft:5,cityLeft:4,road:0,playedDev:false,_trades:0})),
+    robber:B.hexes.find(h=>h.res==='desert').id,
+    bank:{wood:19,brick:19,sheep:19,wheat:19,ore:19},
+    deck:shuffle([...Array(14).fill('knight'),...Array(5).fill('vp'),'road','road','plenty','plenty','mono','mono']),
+    phase:'setup',setupIdx:0,setupOrder:[0,1,2,3,3,2,1,0],order:[0,1,2,3],seat:0,current:0,turn:0,rolled:false,dice:null,
+    lr:null,la:null,freeRoads:0,winner:null,log:[],coach:[],seen:{},cats:{},
+    stats:{produced:0,lost7:0,stolenFrom:0,stole:0,trades:0},diff:DIFF,takebacks:0,cid:0,rollHist:Array(13).fill(0),warnedLeader:{},lastSetup:null
+  });
+  ensureEcon();
+  const st=Math.max(0,Math.min(np-1,seat|0));const ord=BOTS();ord.splice(st,0,0);
+  G.order=ord;G.seat=st;G.setupOrder=[...ord,...ord.slice().reverse()];
+}
+function nextP(i){const o=(G&&G.order)||[0,1,2,3];return o[(o.indexOf(i)+1)%o.length];}
+const SEAT_NAMES=['1st','2nd','3rd','4th'];
+function seatTip(seat,np){return seat===0?SEAT_TIPS[0]:seat===np-1?SEAT_TIPS[3].replace('You place last','You place last of '+np):SEAT_TIPS[seat===1?1:2];}
+const SEAT_TIPS=['You place first: take the single best corner, but your second pick comes last of all, so choose a first spot that stands on its own.',
+  'You place second: predict what the players after you will take, and don’t count on a spot surviving three more picks.',
+  'You place third: two players pick before you and you get your second pick soon after, so plan both settlements with the remaining corners in mind.',
+  'You place last, and twice in a row: plan both settlements as a pair that covers all five resources.'];
+let SIM=false;
+function log(text){if(SIM)return;G.ver=(G.ver||0)+1;G.log.unshift({t:G.turn,text});if(G.log.length>250)G.log.pop();}
+function coach(kind,title,text,cat){
+  if(SIM)return;
+  G.cid=(G.cid||0)+1;G.coach.unshift({kind,title,text,t:G.turn,id:G.cid,cat:cat||null});
+  if(G.coach.length>60)G.coach.pop();
+  if(cat)G.cats[cat]=(G.cats[cat]||0)+1;
+  if(UI&&UI.tab!=='coach')UI.unread=true;
+}
+function rule(k){if(SIM||G.seen[k])return;G.seen[k]=1;const r=RULECARDS[k];coach('rule',r[0],r[1]);}
+
+function vp(pi,pub){
+  const p=G.players[pi];let v=0;
+  G.verts.forEach(x=>{if(x.owner===pi)v+=x.city?2:1;});
+  if(G.lr===pi)v+=2;if(G.la===pi)v+=2;
+  if(!pub)v+=p.dev.filter(d=>d.type==='vp').length;
+  return v;
+}
+function spotFree(v){return v.owner==null&&v.adj.every(a=>G.verts[a].owner==null);}
+function canSettle(pi,v,setup){
+  if(!spotFree(v))return false;
+  if(setup)return true;
+  return v.edges.some(e=>G.edges[e].owner===pi);
+}
+function canRoad(pi,e,fromV){
+  if(e.owner!=null)return false;
+  if(fromV!=null)return e.v.includes(fromV);
+  return e.v.some(vi=>{const v=G.verts[vi];if(v.owner===pi)return true;if(v.owner!=null)return false;
+    return v.edges.some(x=>x!==e.id&&G.edges[x].owner===pi);});
+}
+const legalSpots=(pi,setup)=>G.verts.filter(v=>canSettle(pi,v,setup));
+function ratio(pi,r){
+  let best=4;
+  G.verts.forEach(v=>{if(v.owner!==pi||!v.port)return;if(v.port===r)best=2;else if(v.port==='any')best=Math.min(best,3);});
+  return best;
+}
+function prodPips(pi){
+  const o={wood:0,brick:0,sheep:0,wheat:0,ore:0};
+  G.verts.forEach(v=>{if(v.owner!==pi)return;v.hexes.forEach(h=>{const H=G.hexes[h];if(H.res!=='desert')o[H.res]+=PIPS[H.num]*(v.city?2:1);});});
+  return o;
+}
+const vPips=v=>v.hexes.reduce((s,h)=>{const H=G.hexes[h];return s+(H.num?PIPS[H.num]:0);},0);
+function spotScore(v,pi){
+  const have=prodPips(pi);let s=0;const rs=new Set();
+  v.hexes.forEach(h=>{const H=G.hexes[h];if(H.res==='desert')return;let w=PIPS[H.num];if(h===G.robber)w*=0.4;s+=w;rs.add(H.res);});
+  s+=rs.size*1.3;
+  rs.forEach(r=>{if(have[r]===0)s+=1.6;});
+  if(v.port){if(v.port==='any')s+=1.2;else if(rs.has(v.port)||have[v.port]>=5)s+=2.2;else s+=0.4;}
+  const myHex=new Set(),myNum=new Set();
+  G.verts.forEach(x=>{if(x.owner===pi)x.hexes.forEach(h=>{myHex.add(h);if(G.hexes[h].num)myNum.add(G.hexes[h].num);});});
+  v.hexes.forEach(h=>{if(myHex.has(h))s-=1.5;else if(G.hexes[h].num&&myNum.has(G.hexes[h].num))s-=0.8;});
+  return s;
+}
+function describeSpot(v){
+  const parts=v.hexes.map(h=>G.hexes[h]).filter(H=>H.res!=='desert').sort((a,b)=>PIPS[b.num]-PIPS[a.num]).map(H=>`${H.num} ${RL[H.res]}`);
+  let s=`${vPips(v)} pips (${list(parts)})`;
+  if(v.port)s+=v.port==='any'?', on a 3:1 harbour':`, on a 2:1 ${RL[v.port]} harbour`;
+  return s;
+}
+function placeSettlement(pi,v,second){
+  const p=G.players[pi];v.owner=pi;p.settLeft--;
+  if(second){const got=[];v.hexes.forEach(h=>{const H=G.hexes[h];if(H.res!=='desert'&&give(p,H.res,1))got.push(RL[H.res]);});
+    if(got.length)log(`${p.name} collect${pi===0?'':'s'} ${list(got)} from the second settlement`);}
+  if(G.phase==='play')updateLR();
+}
+function placeRoad(pi,e){e.owner=pi;G.players[pi].roadsLeft--;}
+function roadLen(pi){
+  const mine=G.edges.filter(e=>e.owner===pi);if(!mine.length)return 0;
+  const used=new Set();let best=0;
+  const dfs=(vi,d)=>{
+    const v=G.verts[vi];if(d>0&&v.owner!=null&&v.owner!==pi)return d;
+    let m=d;
+    for(const ei of v.edges){if(used.has(ei))continue;const e=G.edges[ei];if(e.owner!==pi)continue;
+      used.add(ei);m=Math.max(m,dfs(e.v[0]===vi?e.v[1]:e.v[0],d+1));used.delete(ei);}
+    return m;
+  };
+  const starts=new Set();mine.forEach(e=>e.v.forEach(x=>starts.add(x)));
+  starts.forEach(vi=>{best=Math.max(best,dfs(vi,0));});
+  return best;
+}
+function updateLR(){
+  const L=G.players.map(p=>roadLen(p.i));G.players.forEach((p,i)=>p.road=L[i]);
+  const max=Math.max(...L),prev=G.lr;let nh;
+  if(max<5)nh=null;else if(prev!=null&&L[prev]===max)nh=prev;
+  else{const w=L.map((l,i)=>l===max?i:-1).filter(i=>i>=0);nh=w.length===1?w[0]:null;}
+  if(nh===prev)return;
+  G.lr=nh;
+  if(nh==null){log('Longest Road is now unclaimed');return;}
+  log(`${nm(nh)} take${nh===0?'':'s'} Longest Road (${max} segments, +2 VP)`);
+  if(nh===0)coach('good','Longest Road is yours','You have the longest continuous road (5+ segments), worth 2 VP. Someone can take it by building a longer one, or by settling in the middle of yours.');
+  else coach('tip',`${nm(nh)} holds Longest Road`,`A continuous road of 5+ segments is worth 2 VP. ${nm(nh)} now has ${max}. You can take it with a longer road.`);
+}
+function updateLA(pi){
+  const p=G.players[pi];
+  if(p.knights>=3&&G.la!==pi&&(G.la==null||p.knights>G.players[G.la].knights)){
+    G.la=pi;log(`${p.name} take${pi===0?'':'s'} Largest Army (${p.knights} knights, +2 VP)`);
+    if(pi===0)coach('good','Largest Army is yours','The first player to play 3 knights gets 2 VP. Another player needs more knights than you to take it.');
+    else coach('tip',`${p.name} holds Largest Army`,`${p.name} has played ${p.knights} knights. You need ${p.knights+1} to take the 2 VP.`);
+  }
+}
+function buyDevCard(p){pay(p,COST.dev);const t=G.deck.pop();p.dev.push({type:t,turn:G.turn});return t;}
+function useDev(p,type){const i=p.dev.findIndex(d=>d.type===type&&d.turn!==G.turn);if(i<0)return false;p.dev.splice(i,1);p.playedDev=true;return true;}
+function doBankTrade(p,giveR,getR){const n=ratio(p.i,giveR);p.res[giveR]-=n;G.bank[giveR]+=n;p.res[getR]++;G.bank[getR]--;}
+function checkWin(){
+  if(G.phase!=='play'||G.winner!=null)return;
+  const pi=G.current;
+  if(SIM){if(vp(pi)>=10)G.winner=pi;return;}
+  if(vp(pi)>=10){G.winner=pi;log(`${nm(pi)} reach${pi===0?'':'es'} ${vp(pi)} VP and win${pi===0?'':'s'}!`);UI.mode=null;if(pi===0)resume('endturn');}
+}
+function robberOnMe(pi){const H=G.hexes[G.robber];return H.res!=='desert'&&H.verts.some(v=>G.verts[v].owner===pi);}
+function victims(h,pi){const s=new Set();G.hexes[h].verts.forEach(vi=>{const o=G.verts[vi].owner;if(o!=null&&o!==pi&&handCount(G.players[o])>0)s.add(o);});return[...s];}
+function moveRobber(h,pi){G.robber=h;const H=G.hexes[h];if(!SIM&&G.econ)[...new Set(H.verts.map(v=>G.verts[v].owner))].forEach(o=>{if(o!=null&&o!==pi&&o!==0)trustAdj(o,pi,-0.1*(0.5+TR(o).grudge));});log(`${nm(pi)} move${pi===0?'':'s'} the robber to ${TERR[H.res]}${H.num?' ('+H.num+')':''}`);}
+function steal(pi,vi){
+  const v=G.players[vi],p=G.players[pi];const pool=[];RES.forEach(r=>{for(let i=0;i<v.res[r];i++)pool.push(r);});
+  if(!pool.length)return;const r=pool[rnd(pool.length)];v.res[r]--;p.res[r]++;
+  if(!SIM&&G.econ){if(vi!==0){trustAdj(vi,pi,-0.3*(0.5+TR(vi).grudge));G.econ.tilt[vi]+=0.35;}if(vi===0&&pi!==0)obs(pi,'robbedYou');}
+  if(pi===0){G.stats.stole++;log(`You steal ${RL[r]} from ${v.name}`);}
+  else if(vi===0){G.stats.stolenFrom++;log(`${p.name} steals your ${RL[r]}`);}
+  else log(`${p.name} steals a card from ${v.name}`);
+}
+function robberScore(h,pi){
+  if(h===G.robber)return -99;const H=G.hexes[h];let s=0,mine=false;
+  H.verts.forEach(vi=>{const v=G.verts[vi];if(v.owner==null)return;if(v.owner===pi){mine=true;return;}
+    const o=G.players[v.owner];s+=(H.num?PIPS[H.num]:0)*(v.city?2:1)*(1+vp(v.owner,true)/4)+(handCount(o)>0?1:0);});
+  if(mine)s-=25;if(H.res==='desert')s-=3;return s;
+}
+function bankPlan(p,cost){
+  const r={...p.res};const out=[];
+  for(let k=0;k<6;k++){
+    const need=RES.find(x=>r[x]<(cost[x]||0));if(!need)return out;
+    if(G.bank[need]<1)return null;
+    const giveR=maxBy(RES.filter(x=>x!==need&&r[x]-(cost[x]||0)>=ratio(p.i,x)),x=>r[x]-(cost[x]||0));
+    if(!giveR)return null;const n=ratio(p.i,giveR);r[giveR]-=n;r[need]++;out.push({give:giveR,get:need,n});
+  }
+  return null;
+}
+function produce(n){
+  const want=G.players.map(()=>({wood:0,brick:0,sheep:0,wheat:0,ore:0}));let blocked=null;
+  G.hexes.forEach(h=>{if(h.num!==n)return;if(h.id===G.robber){blocked=h;return;}
+    h.verts.forEach(vi=>{const v=G.verts[vi];if(v.owner!=null)want[v.owner][h.res]+=v.city?2:1;});});
+  RES.forEach(r=>{const tot=want.reduce((s,w)=>s+w[r],0);if(tot>G.bank[r]){const rec=want.filter(w=>w[r]>0);
+    if(rec.length===1)rec[0][r]=G.bank[r];else{want.forEach(w=>w[r]=0);log(`The bank is short of ${RL[r]}, so nobody gets any`);}}});
+  const parts=[];
+  want.forEach((w,pi)=>{const p=G.players[pi];const got=RES.filter(r=>w[r]>0);
+    got.forEach(r=>{p.res[r]+=w[r];G.bank[r]-=w[r];if(pi===0)G.stats.produced+=w[r];});
+    if(got.length)parts.push(`${p.name} +${got.map(r=>w[r]+' '+RL[r]).join(', ')}`);});
+  if(blocked){log(`The robber blocks ${TERR[blocked.res]} (${n})`);
+    if(blocked.verts.some(v=>G.verts[v].owner===0))coach('tip','The robber cost you this roll',`Your ${TERR[blocked.res]} (${n}) would have paid out but the robber is on it. A Knight card moves it off.`);}
+  log(parts.length?parts.join(' · '):'Nobody collects anything');
+}
+
+
+/* ---------- Engine: simulated playouts ---------- */
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const ENG={rollouts:40,horizon:72,wpRollouts:100};
+function prepSim(){
+  // Re-deal hidden information from the player's point of view: bots' hands and dev cards, and the deck order.
+  G.diff='sim';G.log=[];G.coach=[];
+  const pool=G.deck.slice();G.players.forEach(o=>{if(o.i!==0)o.dev.forEach(d=>pool.push(d.type));});
+  shuffle(pool);
+  G.players.forEach(o=>{if(o.i===0)return;o.dev=o.dev.map(d=>({type:pool.pop(),turn:d.turn}));});
+  G.deck=pool;
+  G.players.forEach(o=>{if(o.i===0)return;const n=handCount(o);if(!n)return;const pp=prodPips(o.i);const w=RES.map(r=>pp[r]+1);const tw=w.reduce((a,b)=>a+b,0);
+    RES.forEach(r=>{G.bank[r]+=o.res[r];o.res[r]=0;});
+    for(let k=0;k<n;k++){let x=Math.random()*tw,j=0;while(x>w[j]&&j<4){x-=w[j];j++;}let r=RES[j];if(G.bank[r]<1)r=maxBy(RES,q=>G.bank[q]);G.bank[r]--;o.res[r]++;}});
+}
+function simFinishTurn(){
+  const i=G.current,p=G.players[i];
+  if(!G.rolled){
+    p.playedDev=false;p._trades=0;G.freeRoads=0;
+    if(p.dev.some(d=>d.type==='knight'&&d.turn!==G.turn)&&robberOnMe(i)){useDev(p,'knight');p.knights++;updateLA(i);botRobber(p);}
+    const n=2+rnd(6)+rnd(6);G.rolled=true;
+    if(n===7){G.players.forEach(o=>{const c=handCount(o);if(c>7)botDiscard(o,Math.floor(c/2));});botRobber(p);}else produce(n);
+  }
+  for(let g=0;g<10&&G.winner==null;g++){if(!botAct(p))break;checkWin();}
+  checkWin();
+  if(G.winner==null){G.current=nextP(i);G.turn++;G.rolled=false;G.dice=null;}
+}
+function simScores(){
+  const s=G.players.map(o=>{const pp=prodPips(o.i);const tot=RES.reduce((a,r)=>a+pp[r],0);
+    return vp(o.i)+tot*0.07+Math.min(o.dev.length,4)*0.25+(o.knights>=2&&G.la==null?0.4:0)+(o.road>=4&&G.lr==null?0.3:0);});
+  const mx=Math.max(...s);const e=s.map(x=>Math.exp((x-mx)/1.1));const t=e.reduce((a,b)=>a+b,0);return e.map(x=>x/t);
+}
+function rollout(base,seed,apply,endNow){
+  const realG=G,realR=Math.random;let out;
+  try{
+    SIM=true;Math.random=mulberry(seed);G=JSON.parse(base);prepSim();
+    if(apply)apply();
+    if(endNow&&G.winner==null){G.current=nextP(G.current);G.turn++;G.rolled=false;}
+    const stop=G.turn+ENG.horizon;
+    while(G.winner==null&&G.turn<stop&&G.phase==='play')simFinishTurn();
+    if(G.winner!=null){out=[0,0,0,0];out[G.winner]=1;}else out=simScores();
+  }catch(e){out=null;}
+  finally{G=realG;Math.random=realR;SIM=false;}
+  return out;
+}
+// Candidate moves, applied to the simulated copy of the game
+function candApply(c){
+  if(!c)return null;const p=()=>G.players[0];
+  return{
+    city:()=>{const v=G.verts[c.v];pay(p(),COST.city);v.city=true;p().cityLeft--;p().settLeft++;},
+    settlement:()=>{pay(p(),COST.settlement);placeSettlement(0,G.verts[c.v],false);},
+    road:()=>{pay(p(),COST.road);placeRoad(0,G.edges[c.e]);updateLR();},
+    dev:()=>{buyDevCard(p());},
+    robber:()=>{G.robber=c.h;const vs=victims(c.h,0);if(vs.length)steal(0,c.victim!=null&&vs.includes(c.victim)?c.victim:maxBy(vs,x=>vp(x,true)*10+handCount(G.players[x])));},
+    none:()=>{}
+  }[c.kind]||null;
+}
+const ENGQ=[];let engBusy=false;
+function engQueue(job){ENGQ.push(job);if(!engBusy)engPump();}
+async function engPump(){
+  engBusy=true;
+  while(ENGQ.length){
+    const job=ENGQ[0];
+    if(job.cancelled&&job.cancelled()){ENGQ.shift();continue;}
+    const t0=(typeof performance!=='undefined'?performance:Date).now();
+    while(!job.done&&(typeof performance!=='undefined'?performance:Date).now()-t0<14)job.step();
+    if(job.done){ENGQ.shift();if(!(job.cancelled&&job.cancelled()))job.finish();}
+    await new Promise(r=>setTimeout(r,0));
+  }
+  engBusy=false;
+}
+// Evaluate candidates with common random numbers: candidate k, rollout j all use seed base+j.
+function evalJob(cands,n,onDone,cancelled){
+  const res=cands.map(()=>({sum:[0,0,0,0],n:0}));const seed0=1+rnd(1e9);let j=0,k=0;
+  return{cancelled,done:false,
+    step(){const c=cands[k];const o=rollout(c.base,seed0+j,candApply(c),c.endNow);if(o){res[k].n++;o.forEach((x,i)=>res[k].sum[i]+=x);}
+      k++;if(k>=cands.length){k=0;j++;if(j>=n)this.done=true;}},
+    finish(){onDone(res.map(r=>r.n?r.sum.map(x=>x/r.n):null));}};
+}
+
+/* ---------- Win probability ---------- */
+let WP={key:null,val:null,pending:false,stale:false,tok:null};
+function wpKey(){return G?G.turn+'|'+(G.ver||0)+'|'+G.robber+'|'+(G.rolled?1:0):null;}
+function scheduleWP(){
+  if(!G||G.phase!=='play'||G.winner!=null||SIM)return;
+  const key=wpKey();if(key===WP.key)return;
+  if(WP.pending){WP.stale=true;return;}
+  const tok={};WP.tok=tok;WP.pending=true;WP.key=key;const gid=GAME_ID;const base=JSON.stringify(G);
+  engQueue(evalJob([{base}],ENG.wpRollouts,r=>{if(WP.tok!==tok)return;WP.pending=false;if(r[0])WP.val=r[0];renderWP();
+    if(WP.stale){WP.stale=false;scheduleWP();}},()=>gid!==GAME_ID||WP.tok!==tok));
+}
+function renderWP(){if(typeof document==='undefined')return;renderOpp();renderPlayers();}
+
+/* ---------- Move grading ---------- */
+const GRADES=[{max:0.6,label:'Best',cls:'g-best'},{max:2.5,label:'Good',cls:'g-good'},{max:6,label:'Inaccuracy',cls:'g-inacc'},{max:12,label:'Mistake',cls:'g-mist'},{max:999,label:'Blunder',cls:'g-blun'}];
+function gradeFor(loss){return GRADES.find(g=>loss<=g.max);}
+function describeCand(c){
+  if(!c)return'';
+  return{city:()=>`a city on the ${vPips(G.verts[c.v])}-pip settlement`,settlement:()=>`a settlement on ${describeSpot(G.verts[c.v])}`,road:()=>'a road toward the best open corner',
+    dev:()=>'buying a development card',robber:()=>{const h=G.hexes[c.h];return `the robber on ${TERR[h.res]} (${h.num})`;},
+    none:()=>c.label||'holding your cards',user:()=>'your move'}[c.kind]();
+}
+function buildCands(pre){
+  // alternatives a player could take from the pre-move position (state as JSON)
+  const p=me();const out=[];
+  const sets=G.verts.filter(v=>v.owner===0&&!v.city).sort((a,b)=>vPips(b)-vPips(a));
+  if(afford(p,COST.city)&&p.cityLeft>0)sets.slice(0,2).forEach(v=>out.push({kind:'city',v:v.id,base:pre}));
+  if(afford(p,COST.settlement)&&p.settLeft>0)legalSpots(0,false).sort((a,b)=>spotScore(b,0)-spotScore(a,0)).slice(0,2).forEach(v=>out.push({kind:'settlement',v:v.id,base:pre}));
+  if(afford(p,COST.road)&&p.roadsLeft>0){const b=bestRoad(0);if(b)out.push({kind:'road',e:b.e.id,base:pre});}
+  if(afford(p,COST.dev)&&G.deck.length)out.push({kind:'dev',base:pre});
+  return out;
+}
+function gradeMove(what,userCand,alts,extra){
+  // userCand / alts: {kind,base,...}. Runs in the background, then posts the grade.
+  if(SIM||G.phase!=='play'||G.winner!=null)return;
+  const g=G,gid=GAME_ID,t0=G.turn;
+  const same=(a,b)=>a.kind===b.kind&&a.v===b.v&&a.e===b.e&&a.h===b.h&&a.kind!=='none';
+  const cands=[userCand,...alts.filter(a=>!same(a,userCand))];if(cands.length<2)return;
+  engQueue(evalJob(cands,ENG.rollouts,r=>{
+    if(GAME_ID!==gid||G!==g)return;
+    const w=r.map(x=>x?x[0]:-1);const best=Math.max(...w);const bi=w.indexOf(best);
+    const loss=Math.max(0,(best-w[0])*100);const gr=gradeFor(loss);
+    const altTxt=bi>0?describeCand(cands[bi]):'';
+    const entry={t:t0,what,label:gr.label,cls:gr.cls,loss:+loss.toFixed(1),wp:+(w[0]*100).toFixed(0),alt:altTxt};
+    (G.grades=G.grades||[]).push(entry);
+    G.cid=(G.cid||0)+1;
+    G.coach.unshift({kind:'grade',title:`${gr.label}: ${what}`,text:loss<0.6?`The engine agrees. Your win chance after this: about ${entry.wp}%.`
+      :`This cost about ${loss.toFixed(1)}% win chance (now about ${entry.wp}%). The engine preferred ${altTxt}${extra?'. '+extra:''}.`,t:t0,id:G.cid,grade:gr.cls});
+    UI.lastGrade=entry;if(UI.tab!=='coach')UI.unread=true;render();
+  },()=>GAME_ID!==gid||G!==g));
+}
+function gradeSetup(v,cands){
+  const best=maxBy(cands,x=>spotScore(x,0));const mine=spotScore(v,0),top=spotScore(best,0);
+  const loss=Math.max(0,(top-mine)/Math.max(top,1)*30);const gr=gradeFor(loss);
+  const entry={t:0,what:'starting settlement',label:gr.label,cls:gr.cls,loss:+loss.toFixed(1),wp:null,alt:best!==v?`a settlement on ${describeSpot(best)}`:''};
+  (G.grades=G.grades||[]).push(entry);UI.lastGrade=entry;
+  G.cid=(G.cid||0)+1;G.coach.unshift({kind:'grade',grade:gr.cls,id:G.cid,t:0,title:`${gr.label}: starting settlement`,
+    text:loss<0.6?'Among the strongest corners on the board.':`The strongest open corner was ${describeSpot(best)}.`});
+}
+function robberCands(pre,userH){
+  return G.hexes.map(x=>x.id).filter(h=>h!==G.robber&&h!==userH).sort((a,b)=>robberScore(b,0)-robberScore(a,0)).slice(0,4).map(h=>({kind:'robber',h,base:pre}));
+}
+function gradeWorthy(){const p=me();if(buildCands().length)return true;const T=tradeSearch();return !!(T.best&&T.best.items.some(t=>t!=='dev'));}
+
+/* ---------- Turn flow ---------- */
+async function runGame(resumed){
+  const id=GAME_ID;
+  rule('welcome');rule('setup');
+  for(;G.setupIdx<G.setupOrder.length;G.setupIdx++){
+    const pi=G.setupOrder[G.setupIdx];G.current=pi;const p=G.players[pi];
+    if(p.bot){
+      render();await sleep(spd());if(id!==GAME_ID)return;
+      botSetupSettle(p);render();await sleep(spd()*0.7);if(id!==GAME_ID)return;
+      botSetupRoad(p);
+    }else{
+      if(G.setupIdx>=NP())rule('second');
+      UI.mode='setup-settle';render();await waitFor('setup');if(id!==GAME_ID)return;
+    }
+  }
+  if(G.phase==='setup'){G.phase='play';G.current=G.order[0];G.turn=1;updateLR();afterSetupCoach();}
+  ensureEcon();
+  let cont=!!resumed&&G.current===0;
+  while(G.winner==null){
+    const p=G.players[G.current];
+    if(!cont)econTurnStart();
+    if(!cont){G.rolled=false;G.dice=null;p.playedDev=false;p._trades=0;G.freeRoads=0;}
+    checkWin();if(G.winner!=null)break;
+    if(p.bot){await botTurn(p.i,id);if(id!==GAME_ID)return;}
+    else{if(!cont)userTurnStart();cont=false;render();await waitFor('endturn');if(id!==GAME_ID)return;}
+    cont=false;
+    if(G.winner!=null)break;
+    G.current=nextP(G.current);G.turn++;if(G.current===G.order[0])econRound();
+  }
+  UI.mode=null;UI.modal={type:'over'};clearSave();render();
+}
+
+/* ---------- Saving ---------- */
+const SAVE_KEY='hl-save-v1';
+function stablePoint(){
+  if(!G||G.winner!=null||G.current!==0||UI.busy||UI.modal)return false;
+  if(G.phase==='setup')return UI.mode==='setup-settle';
+  return !UI.mode;
+}
+function saveGame(){
+  if(!stablePoint())return;
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify({savedAt:Date.now(),G}));UI.savedAt=Date.now();}catch(e){}
+}
+function clearSave(){try{localStorage.removeItem(SAVE_KEY);}catch(e){}UI.savedAt=null;}
+function loadSave(){
+  try{const raw=localStorage.getItem(SAVE_KEY);if(!raw)return null;const d=JSON.parse(raw);
+    if(!d||!d.G||!Array.isArray(d.G.hexes)||d.G.winner!=null)return null;return d;}catch(e){return null;}
+}
+function inProgress(){return G&&!G.preview&&G.winner==null&&(G.phase==='play'||G.setupIdx>0);}
+async function doRoll(pi){
+  const a=1+rnd(6),b=1+rnd(6),n=a+b;G.dice=[a,b];G.rolled=true;G.rollHist[n]++;
+  log(`${nm(pi)} roll${pi===0?'':'s'} ${n}`);
+  if(n===7){rule('seven');await handleSeven(pi);}else produce(n);
+}
+async function handleSeven(pi){
+  const id=GAME_ID;
+  for(const p of G.players){
+    const c=handCount(p);if(c<=7)continue;const need=Math.floor(c/2);
+    if(p.bot)botDiscard(p,need);
+    else{rule('discard');UI.modal={type:'discard',need,sel:{}};render();await waitFor('discard');if(id!==GAME_ID)return;
+      G.stats.lost7+=need;log(`You discard ${need} cards`);
+      coach('warn',`A 7 cost you ${need} cards`,`You were holding ${c}. Anything over 7 is at risk on every roll, and 7 is the most common roll (1 in 6). Spend or trade down before ending your turn.`,'bigHand');}
+  }
+  render();
+  await robberStep(pi);
+}
+async function robberStep(pi){
+  const id=GAME_ID;const p=G.players[pi];
+  if(p.bot){botRobber(p);return;}
+  rule('robber');let h;
+  for(;;){
+    UI.mode='robber';render();
+    h=await waitFor('robber');if(id!==GAME_ID)return;UI.mode=null;UI.hint=null;
+    const snap=JSON.stringify(G),cid=G.cid||0;coachRobber(h);promiseCheck(h);
+    if(ALERTS&&warnsSince(cid).length){UI.modal={type:'mistake',warns:warnsSince(cid),async:true,what:'robber'};render();
+      const c=await waitFor('mistake');if(id!==GAME_ID)return;UI.modal=null;if(c==='back'){restoreSnap(snap);continue;}}
+    gradeMove('robber placement',{kind:'robber',h,base:snap},robberCands(snap,h));
+    break;
+  }
+  moveRobber(h,0);userRobbed(h);
+  const vs=victims(h,0);
+  if(vs.length===1)steal(0,vs[0]);
+  else if(vs.length>1){UI.modal={type:'steal',vs};render();const v=await waitFor('steal');if(id!==GAME_ID)return;steal(0,v);}
+  render();
+}
+
+
+/* ---------- Table economy: personalities, trust, negotiation, alliances ---------- */
+const TRAITS=['coop','greed','grudge','aware','loyal','tilt','chat'];
+const TRAIT_RANGES={
+  easy:{coop:[.55,1],greed:[0,.4],grudge:[.1,.55],aware:[.05,.45],loyal:[.3,.8],tilt:[.2,.8],chat:[.4,.9]},
+  medium:{coop:[.25,.85],greed:[.15,.75],grudge:[.15,.85],aware:[.35,.8],loyal:[.25,.85],tilt:[.1,.7],chat:[.3,.85]},
+  hard:{coop:[.3,.75],greed:[.4,.9],grudge:[.4,.95],aware:[.7,1],loyal:[.55,.95],tilt:[0,.35],chat:[.4,.9]}
+};
+const TRAIT_LABEL={coop:'Cooperative',greed:'Greedy',grudge:'Holds grudges',aware:'Watches the leader',loyal:'Loyal to alliances',tilt:'Hot-headed',chat:'Chatty'};
+const pick=a=>a[rnd(a.length)];
+function gauss(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+function ensureEcon(){
+  if(!G||G.econ)return;const rg=TRAIT_RANGES[G.diff]||TRAIT_RANGES.medium;const tr={};
+  BOTS().forEach(i=>{tr[i]={};TRAITS.forEach(k=>{const[a,b]=rg[k];tr[i][k]=+(a+Math.random()*(b-a)).toFixed(2);});});
+  G.econ={traits:tr,trust:[0,1,2,3].map(()=>[0,0,0,0]),tilt:[0,0,0,0],perc:[0,1,2,3].map(()=>[0,0,0,0]),alliance:null,chat:[],obs:{1:{},2:{},3:{}},king:{},round:0};
+  econExtras();
+  refreshPerc();
+}
+function econExtras(){const E=G.econ;if(!E)return;E.sway=E.sway||[0,1,2,3].map(()=>[0,0,0,0]);E.pacts=E.pacts||{};E.promises=E.promises||[];E.threats=E.threats||[];
+  if(E.cred==null)E.cred=0.5;E.deter=E.deter||{};E.rl=E.rl||{};E.pstats=E.pstats||{kept:0,broken:0,deals:0};}
+const TR=i=>(G.econ&&G.econ.traits[i])||{coop:.5,greed:.5,grudge:.5,aware:.5,loyal:.5,tilt:.3,chat:.5};
+function refreshPerc(){econExtras();for(const i of BOTS())for(let j=0;j<4;j++)G.econ.perc[i][j]=+(gauss()*(1-TR(i).aware)*1.4+G.econ.sway[i][j]).toFixed(2);}
+function perceived(i,j){return vp(j,true)+G.players[j].dev.length*0.25*(0.5+TR(i).aware)+(G.econ?G.econ.perc[i][j]:0);}
+function alarmTarget(i){
+  const pv=ALL().filter(j=>j!==i).map(j=>({j,v:perceived(i,j)})).sort((a,b)=>b.v-a.v);
+  const thr=7.6-TR(i).aware*1.6;if(pv.length&&pv[0].v>=thr&&pv[0].v-Math.max(pv[1]?pv[1].v:-99,vp(i))>=0.8)return pv[0].j;return null;
+}
+function say(i,text){if(SIM||!G.econ)return;G.econ.chat.push({t:G.turn,i,text});if(G.econ.chat.length>80)G.econ.chat.shift();}
+function obs(i,k){if(SIM||!G.econ||!G.econ.obs[i])return;G.econ.obs[i][k]=(G.econ.obs[i][k]||0)+1;}
+function trustAdj(i,j,d){if(SIM||!G.econ||!i||i===j)return;const t=G.econ.trust[i];t[j]=Math.max(-1,Math.min(1,t[j]+d));}
+function econRound(){
+  if(!G.econ)return;G.econ.round++;
+  for(const i of BOTS()){const g=TR(i).grudge;for(let j=0;j<4;j++)G.econ.trust[i][j]=+(G.econ.trust[i][j]*(1-0.12*(1-g))).toFixed(3);G.econ.tilt[i]*=0.7;}
+  econExtras();const E=G.econ;
+  for(const i of BOTS())for(let j=0;j<4;j++)E.sway[i][j]*=0.6;
+  E.promises=E.promises.filter(pr=>{if(E.round>pr.until){trustAdj(pr.to,0,0.12);E.pstats.kept++;say(pr.to,pick(['You kept your word. Noted.','Fair play, you kept your promise.']));return false;}return true;});
+  E.threats=E.threats.filter(th=>{if(E.round>th.round+2){if(!th.met)E.cred=Math.max(0,E.cred-0.15);return false;}return true;});
+  for(const k in E.pacts)if(E.round>E.pacts[k].until)delete E.pacts[k];
+  refreshPerc();
+}
+function econTurnStart(){if(!G.econ||G.phase!=='play')return;updateAlliance();updateKing();}
+function updateAlliance(){
+  const votes={};BOTS().forEach(i=>{if(G.econ.king[i])return;const t=alarmTarget(i);if(t!=null)(votes[t]=votes[t]||[]).push(i);});
+  const d=G.diff||'medium';let best=null;const nb=BOTS().length;
+  for(const k in votes){const t=+k;const m=votes[k].filter(i=>i!==t);
+    const need=t===0?(nb<2?99:Math.min({easy:3,medium:2,hard:2}[d],nb)):(nb<2?99:Math.max(1,Math.min({easy:2,medium:2,hard:2}[d],nb-1)));
+    if(m.length>=need&&(!best||m.length>best.members.length))best={target:t,members:m};}
+  const cur=G.econ.alliance;
+  if(cur&&cur.withYou&&G.econ.round<=cur.until&&(!best||best.target===cur.target||best.members.length<=cur.members.length)){if(best&&best.target===cur.target)cur.members=[...new Set([...cur.members,...best.members])];return;}
+  if(best&&!cur&&G.econ.round<(G.econ.allyGap||0))return;
+  if(best&&(!cur||cur.target!==best.target)){
+    G.econ.alliance=best;const spk=maxBy(best.members,i=>TR(i).aware);
+    say(spk,best.target===0?pick(['You’re running away with this. I’m done trading with you.','Nobody help the leader. That means you.']):`${nm(best.target)}’s on ${vp(best.target,true)}. Nobody trade with ${nm(best.target)}.`);
+    best.members.filter(i=>i!==spk).forEach(i=>say(i,pick(['Agreed.','Fine by me.','Yep.'])));
+    if(best.target===0)coach('tip','The table has turned on you',`${list(best.members.map(nm))} think you’re leading. Expect refused trades and the robber on your best hexes. Keeping your visible points modest delays this.`);
+    else coach('tip',`Alliance against ${nm(best.target)}`,`${list(best.members.map(nm))} have stopped trading with ${nm(best.target)}. Join in: refuse ${nm(best.target)}’s trades and aim the robber there.`);
+  }else if(best&&cur)cur.members=best.members;
+  else if(!best&&cur){say(cur.members[0],pick(['Fine, truce for now.','Okay, back to normal.']));G.econ.alliance=null;G.econ.allyGap=G.econ.round+2;}
+}
+function updateKing(){
+  if(NP()<3)return;
+  if(G.turn<52)return;
+  for(const i of BOTS()){if(G.econ.king[i])continue;const maxv=Math.max(...ALL().map(j=>vp(j,true)));
+    if(vp(i,true)<=maxv-4&&Math.random()<0.15+TR(i).tilt*0.35){
+      const leader=maxBy(ALL().filter(j=>j!==i),j=>vp(j,true));const fav=maxBy(ALL().filter(j=>j!==i&&j!==leader),j=>G.econ.trust[i][j]+Math.random()*0.3);
+      G.econ.king[i]={fav,foe:leader};say(i,`I can’t win this, but I’m not letting ${leader===0?'you':nm(leader)} win.`);}}
+}
+function scarcity(r){const bp={wood:0,brick:0,sheep:0,wheat:0,ore:0};G.hexes.forEach(h=>{if(h.res!=='desert')bp[h.res]+=PIPS[h.num];});
+  const avg=RES.reduce((a,x)=>a+bp[x],0)/5;return Math.max(0.75,Math.min(1.45,1+(avg-bp[r])/avg*0.6));}
+function rVal(b,r,recv,need){let v=scarcity(r);
+  if(recv){if((need[r]||0)>0)v+=0.9;if(b.res[r]>=3)v-=0.4;}
+  else{if((need[r]||0)>0)v+=0.8;else if(COST.city[r]&&b.res[r]<=COST.city[r])v+=0.25;if(b.res[r]>=3)v-=0.5;}
+  return v;}
+function otherGain(o,recvM,giveM){const p=G.players[o];const tgt=o===0?userTarget():botTarget(p);const cost=tgt?COST[tgt]:{};let g=0;
+  RES.forEach(r=>{const rc=recvM[r]||0,gv=giveM[r]||0;if(rc)g+=rc*(p.res[r]<(cost[r]||0)?1.5:0.6);if(gv)g-=gv*(p.res[r]-gv<(cost[r]||0)?1.1:0.6);});return g;}
+const nCards=x=>RES.reduce((a,r)=>a+(x[r]||0),0);
+function tradeVal(B,recvM,giveM){const need=botNeeds(B);let v=0;RES.forEach(r=>{v+=(recvM[r]||0)*rVal(B,r,true,need)-(giveM[r]||0)*rVal(B,r,false,need);});return v;}
+// Should bot B take a deal from player o where B receives recvM and gives giveM?
+function decide(B,o,recvM,giveM,opt){
+  opt=opt||{};const b=B.i,T=TR(b),L=lvl(),E=G.econ||{trust:[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]],tilt:[0,0,0,0],king:{},alliance:null};
+  const who=o===0?'you':nm(o);
+  for(const r of RES)if(B.res[r]<(giveM[r]||0))return{act:'decline',why:`doesn’t have ${giveM[r]} ${RL[r]}`,line:`Haven’t got the ${RL[r]}.`};
+  const K=E.king[b];if(K&&K.foe===o)return{act:'decline',why:`won’t help ${who} win`,line:'Not a chance.'};
+  let val=tradeVal(B,recvM,giveM);if(!opt.exact)val+=gauss()*L.valNoise*Math.sqrt(nCards(recvM)+nCards(giveM));
+  const al=E.alliance;let breaking=false;
+  if(al&&al.target===o&&al.members.includes(b)){if(T.loyal<0.35&&val>1.4&&(opt.exact?false:Math.random()<0.5))breaking=true;
+    else return{act:'decline',why:o===0?'won’t trade with the leader':`is refusing ${nm(o)}`,line:o===0?'Not while you’re leading.':'Not with you.'};}
+  if(vp(o,true)>=L.refuseAt&&!(K&&K.fav===o))return{act:'decline',why:'won’t help the player in the lead',line:'You’re too close to winning.'};
+  const t=E.trust[b][o];
+  if(t<-0.45)return{act:'decline',why:`still hasn’t forgiven ${who}`,line:pick(['After what you did? No.','Not after last time.'])};
+  if(E.tilt[b]*T.tilt>0.3&&t<-0.1)return{act:'decline',why:'is too annoyed to deal',line:'Leave me alone.'};
+  const maxv=Math.max(...ALL().map(j=>vp(j,true)));
+  const margin=L.margin+TBL().margin+T.greed*0.55-T.coop*0.45-t*0.5+(maxv>=8?0.3:0)+(G.econ&&alarmTarget(b)===o?0.5:0)-(K&&K.fav===o?0.8:0);
+  const og=otherGain(o,giveM,recvM),prideP=0.6*(1-T.coop);
+  if(og-val>1.0&&(opt.exact?prideP>0.3:Math.random()<prideP))return{act:'decline',why:`thinks it helps ${who} too much`,line:'That’s a better deal for you than me.'};
+  if(val>=margin)return{act:'accept',why:breaking?'quietly breaks the embargo':'accepts',val,breaking,line:pick(['Deal.','I can do that.','Sure.','Go on then.'])};
+  const cr=L.counterRate*(0.5+T.greed);
+  if(!opt.noCounter&&val>=margin-1.4&&(opt.exact?cr>0.35:Math.random()<cr)){
+    const need=botNeeds(B);
+    const pool=RES.filter(r=>!(giveM[r])&&(o===0?prodPips(0)[r]>0||me().res[r]>0:G.players[o].res[r]>(recvM[r]||0)));
+    const want=maxBy(pool.length?pool:RES.filter(r=>!(giveM[r])),r=>rVal(B,r,true,need));
+    const c={recv:{...recvM},give:{...giveM}};c.recv[want]=(c.recv[want]||0)+1;
+    return{act:'counter',why:`wants ${tradeText({[want]:1})} more`,counter:c,line:`Make it ${tradeText(c.recv)} and you’ve got a deal.`};
+  }
+  return{act:'decline',why:val<margin-1.4?'isn’t interested':`thinks the deal favours ${who}`,line:pick(['Pass.','No thanks.','Not for that.'])};
+}
+// A bot asks the table for a card it needs. Other bots and the player can accept, counter or decline.
+async function tradeSession(i,id){
+  const L=lvl(),T=TR(i);if(SIM||!G.econ||!L.sessionRate)return false;
+  const b=G.players[i];if(Math.random()>L.sessionRate*TBL().session*(0.45+T.chat*0.8))return false;
+  const tg=botTarget(b);if(!tg)return false;const cost=COST[tg];const miss=missing(b,cost);if(miss<1||miss>3)return false;
+  const want=RES.find(r=>b.res[r]<(cost[r]||0));const sur=r=>b.res[r]-(cost[r]||0);
+  const spare=RES.filter(r=>r!==want&&sur(r)>0).sort((x,y)=>sur(y)-sur(x));if(!spare.length)return false;
+  let give={[spare[0]]:1};if(T.coop>0.7&&T.greed<0.35&&sur(spare[0])>=2&&Math.random()<0.4)give={[spare[0]]:2};
+  const get={[want]:1};
+  const willDeal=j=>{const E=G.econ;if(E.trust[i][j]<-0.45)return false;const al=E.alliance;if(al&&al.target===j&&al.members.includes(i)&&T.loyal>=0.35)return false;if(E.king[i]&&E.king[i].foe===j)return false;return true;};
+  say(i,`Anyone got ${RL[want]}? I’ll give ${tradeText(give)}.`);obs(i,'asks');render();await sleep(spd()*0.6);if(id!==GAME_ID)return true;
+  const resp=[];
+  for(const j of BOTS()){if(j===i)continue;
+    if(!willDeal(j)){resp.push({j,act:'ignored',why:`${nm(i)} won’t deal with them`});continue;}
+    const d=decide(G.players[j],i,give,get);resp.push({j,...d});
+    if(d.act!=='decline'||Math.random()<0.6)say(j,d.line);obs(j,d.act==='accept'?'accepts':d.act==='counter'?'counters':'declines');}
+  render();await sleep(spd()*0.6);if(id!==GAME_ID)return true;
+  const p=me();const userEligible=!p.bot&&willDeal(0)&&RES.every(r=>p.res[r]>=(get[r]||0));
+  for(;;){
+    const snap=JSON.stringify(G),cid=G.cid||0;let ur=null;
+    if(userEligible){rule('offers');UI._askEv=evalOffer(i,give,get);UI.ctrDraft='';UI.modal={type:'ask',from:i,give,get,resp,ev:UI._askEv};render();ur=await waitFor('ask');if(id!==GAME_ID)return true;UI.modal=null;
+      if(ur.act==='accept')say(0,'Deal.');else if(ur.act==='counter')say(0,`I’d want ${tradeText(ur.counter.recv)}.`);else say(0,'No thanks.');}
+    const B=G.players[i];const opts=[];
+    resp.forEach(r=>{if(r.act==='accept')opts.push({j:r.j,recv:get,give});
+      else if(r.act==='counter'){const cc=decide(B,r.j,r.counter.give,r.counter.recv,{noCounter:true});if(cc.act==='accept')opts.push({j:r.j,recv:r.counter.give,give:r.counter.recv,counter:true});}});
+    if(ur&&ur.act==='accept')opts.push({j:0,recv:get,give});
+    if(ur&&ur.act==='counter'){const cc=decide(B,0,ur.counter.give,ur.counter.recv,{noCounter:true});if(cc.act==='accept')opts.push({j:0,recv:ur.counter.give,give:ur.counter.recv,counter:true});else say(i,cc.line||'Too steep.');}
+    if(!opts.length){say(i,pick(['Never mind.','Forget it then.']));render();break;}
+    const ch=maxBy(opts,o=>tradeVal(B,o.recv,o.give)+G.econ.trust[i][o.j]*0.6+Math.random()*0.25);
+    const evYou=ch.j===0?evalOffer(i,ch.give,ch.recv):null;
+    const J=G.players[ch.j];RES.forEach(r=>{B.res[r]+=(ch.recv[r]||0)-(ch.give[r]||0);J.res[r]+=(ch.give[r]||0)-(ch.recv[r]||0);});
+    trustAdj(i,ch.j,0.12*(0.5+T.coop));trustAdj(ch.j,i,0.12*(0.5+TR(ch.j).coop));obs(i,'deals');obs(ch.j,'deals');
+    const r0=resp.find(x=>x.j===ch.j);if(r0&&r0.breaking){G.econ.alliance&&G.econ.alliance.members.forEach(m=>{if(m!==ch.j)trustAdj(m,ch.j,-0.2);});say(ch.j,'Don’t tell the others.');}
+    log(`${B.name} trades ${tradeText(ch.give)} to ${ch.j===0?'you':J.name} for ${tradeText(ch.recv)}`);
+    say(i,ch.j===0?'Done, thanks.':`${J.name}, done.`);
+    if(ch.j===0){G.stats.trades++;allianceHonour(i);
+      if(evYou.verdict==='bad')coach('warn','That deal helped them more than you',`Looking at it again: ${list(evYou.why)||'it gave them more than you'}. Turn down offers like this unless you need the card urgently.`,'badDeal');}
+    else if(userEligible&&ur&&ur.act!=='decline')coach('tip',`${B.name} took a different deal`,`${B.name} preferred ${J.name}’s terms${ch.counter?' (a counter-offer)':''}. Bots favour players they trust and better prices.`);
+    if(userEligible&&ur&&ur.act==='decline'){const ev=UI._askEv||evalOffer(i,give,get);if(ev.great)coach('warn','You turned down a build',`That deal would have completed your ${userTarget()}, and ${B.name} isn’t close to winning.`,'missedDeal');}
+    const w=warnsSince(cid);
+    if(ALERTS&&w.length){UI.modal={type:'mistake',warns:w,async:true,what:'offer'};render();const c=await waitFor('mistake');if(id!==GAME_ID)return true;UI.modal=null;
+      if(c==='back'){restoreSnap(snap);continue;}}
+    if(userEligible&&ur){const bn=B.name;const youTraded=ch.j===0;let other;
+      if(youTraded)other=snap;else{const t=JSON.parse(snap);RES.forEach(r=>{t.players[0].res[r]+=(give[r]||0)-(get[r]||0);t.players[i].res[r]+=(get[r]||0)-(give[r]||0);});other=JSON.stringify(t);}
+      gradeMove(`${ur.act==='decline'?'declining':'answering'} ${bn}’s request`,{kind:'none',base:JSON.stringify(G)},[{kind:'none',base:other,label:youTraded?'not trading':'taking the deal'}]);}
+    break;
+  }
+  render();return true;
+}
+function tableRead(i){
+  const o=(G.econ&&G.econ.obs[i])||{};const bits=[];
+  if((o.deals||0)>=2)bits.push('trades often');else if((o.asks||0)>=3&&(o.deals||0)<=1)bits.push('asks a lot, rarely closes');
+  if((o.counters||0)>=2)bits.push('haggles');
+  if((o.refusedYou||0)>=2)bits.push('keeps refusing you');
+  if((o.robbedYou||0)>=2)bits.push('keeps robbing you');
+  const al=G.econ&&G.econ.alliance;if(al&&al.members.includes(i))bits.push(`in the alliance against ${al.target===0?'you':nm(al.target)}`);
+  if(G.econ&&G.econ.king[i])bits.push(`playing kingmaker against ${G.econ.king[i].foe===0?'you':nm(G.econ.king[i].foe)}`);
+  if(G.econ&&G.econ.tilt[i]>0.6)bits.push('looks rattled');
+  return bits.length?bits.join(' · '):'Too early to read';
+}
+function personaOf(T){
+  const sc={'The Shark':T.greed*1.1,'The Fair Dealer':T.coop*(1-T.greed)*1.4,'The Grudge-Holder':T.grudge,'The Pushover':T.coop*(1-T.aware)*1.3,'The Watchman':T.aware*0.95,'The Hothead':T.tilt*1.15};
+  return maxBy(Object.keys(sc),k=>sc[k]);
+}
+function personalityHtml(){
+  if(!G.econ)return'';
+  return `<div class="sec">Who you were up against</div><div class="persona">${BOTS().map(i=>{const T=TR(i);const t=G.econ.trust[i][0];
+    const warm=t>0.25?'warm':t>0.05?'friendly':t<-0.4?'cold':t<-0.1?'wary':'neutral';
+    return `<div class="pers"><div><b>${nm(i)}</b> · ${personaOf(T)}</div><div class="small muted">Feeling toward you at the end: ${warm}</div>
+    ${['coop','greed','grudge','aware','tilt'].map(k=>`<div class="orow"><span>${TRAIT_LABEL[k]}</span><span class="bar"><i style="width:${Math.round(T[k]*100)}%;background:${G.players[i].color==='#f1eee4'?'#8a8676':G.players[i].color}"></i></span><span></span></div>`).join('')}</div>`;}).join('')}</div>`;
+}
+const CHAT_IDEAS=['Let’s team up against the leader','Don’t rob me and I’ll give you a sheep','I promise I won’t rob you','What do you need?','Who’s winning?','I’ve got a knight'];
+function renderTalk(){
+  const ideas=$('#chatIdeas');if(ideas&&!ideas.dataset.done){ideas.dataset.done=1;ideas.innerHTML=CHAT_IDEAS.map(q=>`<button class="chipq" type="button" data-chat="${esc(q)}">${esc(q)}</button>`).join('');}
+  const sel=$('#chatTo');if(sel&&G&&sel.options.length!==NP()){sel.innerHTML='<option value="all">Everyone</option>'+BOTS().map(i=>`<option value="${i}">${nm(i)}</option>`).join('');}
+  const off=!G||G.phase!=='play'||G.winner!=null;['chatBox','chatSend','chatTo'].forEach(id=>{const e=document.getElementById(id);if(e)e.disabled=off;});
+  const el=$('#talk');if(!el)return;const ch=(G.econ&&G.econ.chat)||[];
+  if(!ch.length){el.innerHTML='<div class="small muted">Nothing said yet. Requests, counter-offers and refusals appear here as the bots trade.</div>';return;}
+  el.innerHTML=ch.slice(-40).map(c=>`<div class="tline"><span class="lt">R${Math.max(1,Math.ceil(c.t/NP()))}</span><span class="pdot" style="background:${G.players[c.i].color}"></span><b>${nm(c.i)}</b> ${esc(c.text)}</div>`).join('');
+  el.scrollTop=el.scrollHeight;
+}
+
+
+/* ---------- Talking to the bots ---------- */
+const NAMES_ALL={mara:1,theo:2,ines:3};
+const PERSUADE={easy:1.25,medium:1,hard:0.7};
+const resRe=/(\d+|a|an|one|two|three)?\s*(wood|lumber|logs?|timber|bricks?|clay|sheep|wool|wheat|grain|ore|stones?|rocks?)\b/g;
+function resIn(str){const o={};let m;resRe.lastIndex=0;while((m=resRe.exec(str))){const w=m[2];const r=RES_WORDS[w]||RES_WORDS[w.replace(/s$/,'')];if(!r)continue;o[r]=(o[r]||0)+(m[1]?(NUM_WORDS[m[1]]||+m[1]):1);}return o;}
+function rlimit(i,k){econExtras();const E=G.econ;const key=i+':'+k;if(E.rl[key]===E.round)return true;E.rl[key]=E.round;return false;}
+function promiseCheck(h){
+  if(!G.econ)return;econExtras();const owners=[...new Set(G.hexes[h].verts.map(v=>G.verts[v].owner).filter(o=>o!=null&&o!==0))];
+  owners.forEach(o=>{if(G.econ.promises.some(pr=>pr.to===o))coach('warn',`You promised ${nm(o)}`,`You told ${nm(o)} you wouldn’t rob them. Doing it now will cost you their trust, and the others will hear about it.`,'brokePromise');});
+}
+function userRobbed(h){
+  if(!G.econ)return;econExtras();const E=G.econ;const owners=[...new Set(G.hexes[h].verts.map(v=>G.verts[v].owner).filter(o=>o!=null&&o!==0))];
+  owners.forEach(o=>{
+    const pr=E.promises.find(x=>x.to===o);
+    if(pr){E.promises=E.promises.filter(x=>x!==pr);E.pstats.broken++;trustAdj(o,0,-0.6);BOTS().filter(j=>j!==o).forEach(j=>trustAdj(j,0,-0.2));
+      say(o,pick([`You promised! Everyone, don’t trust a word they say.`,`So much for your promise. Remember this, all of you.`]));}
+    E.threats.filter(th=>th.to===o&&!th.met).forEach(th=>{th.met=true;E.cred=Math.min(1,E.cred+0.2);});
+    const al=E.alliance;if(al&&al.withYou&&al.members.includes(o)){trustAdj(o,0,-0.3);say(o,'I thought we were on the same side.');}
+  });
+}
+function allianceHonour(partner){
+  const al=G.econ&&G.econ.alliance;if(!al||!al.withYou||al.target!==partner)return;
+  al.members.forEach(m=>{trustAdj(m,0,-0.25);});say(al.members[0],`We agreed to freeze ${nm(partner)} out!`);
+}
+function chatSend(text,toSel){
+  text=String(text||'').trim();if(!text||!G||G.phase!=='play'||G.winner!=null)return false;
+  ensureEcon();econExtras();rule('chat');
+  const NAMES=Object.fromEntries(Object.entries(NAMES_ALL).filter(([k,v])=>G.players[v]));
+  say(0,text);render();
+  const t=' '+text.toLowerCase().replace(/[’‘]/g,"'").replace(/[^a-z0-9' +]/g,' ').replace(/\s+/g,' ')+' ';
+  const mentioned=[...new Set(Object.keys(NAMES).filter(n=>t.includes(' '+n+' ')||t.includes(' '+n+"'s ")).map(n=>NAMES[n]))];
+  let to=toSel==='all'?null:+toSel;
+  if(to==null){const m=t.match(/^ (mara|theo|ines)\b/);if(m)to=NAMES[m[1]];}
+  const addr=to!=null?[to]:BOTS();
+  let third=mentioned.find(j=>to==null?true:j!==to);
+  if(third==null&&/\b(leader|winning|the winner|in the lead)\b/.test(t)&&/\b(team|gang|together|ally|alliance|stop|block|rob|target|freeze)\b/.test(t))third=maxBy(BOTS(),j=>vp(j,true));
+  const P=PERSUADE[G.diff]||1;const E=G.econ;const out=[];const reply=(i,line)=>out.push({i,line});
+  const kind=
+    /\b(idiot|stupid|moron|loser|shut up|useless|rubbish|terrible)\b/.test(t)?'insult':
+    /\b(sorry|my bad|apologi[sz]e|no hard feelings)\b/.test(t)?'apology':
+    /\b(or else|or i'?ll|or the robber|otherwise i'?ll|i'?ll rob you|i will rob you|you'?re next)\b/.test(t)?'threat':
+    /\b(i won'?t|i will not|promise not to|i promise|i'?ll leave you|i'?m not going to|i am not going to) (rob|block|touch|target|put|knight|come)/.test(t)||/\bi promise\b.*\brob/.test(t)?'promise':
+    /\b(don'?t|do not|please don'?t|stop|no) (rob|robbing|block|blocking|knight|knighting|put(ting)? the robber)\w*\b.*\b(me|my|mine)\b|\bleave me alone\b|\bnot me\b/.test(t)?'norob':
+    /\b(team up|gang up|work together|alliance|ally|join forces|together against|let'?s (stop|block|rob|target|freeze|deal with)|stop trading with|don'?t trade with|nobody trade with|no one trade with|freeze|rob (mara|theo|ines)|target (mara|theo|ines)|block (mara|theo|ines)|stop (mara|theo|ines))\b/.test(t)&&third!=null?'alliance':
+    /\bi(?:'ve got|'ve| have| have got| got| am holding| hold|'m holding| still have)(?: a| an| one| two| three| \d)? (?:knight|soldier)s?\b/.test(t)?'knights':
+    /\bwho'?s? (is )?(winning|leading|ahead)\b|\bwho should (we|i) (worry|watch)/.test(t)?'qleader':
+    /\bwhat (do you|are you) (need|want|after|looking for|missing)\b/.test(t)?'qneed':
+    third!=null&&/\b(winning|about to win|close to|leading|ahead|has (vp|victory|points)|hiding|will win|watch out|careful|dangerous|threat|cards)\b/.test(t)?'warn':
+    /\bfor\b/.test(t)&&Object.keys(resIn(t)).length>=1||/\b(anyone|anybody|who) (have|has|got)\b|\bi need\b|\blooking for\b|\bwant to trade\b/.test(t)?'trade':
+    /\b(thanks|thank you|cheers|gg|good game|nice one|well played|good luck)\b/.test(t)?'thanks':'unknown';
+  const userLeads=()=>vp(0,true)>Math.max(...BOTS().map(j=>vp(j,true)));
+  addr.forEach(i=>{
+    const T=TR(i),tr=E.trust[i][0];
+    if(kind==='insult'){trustAdj(i,0,-0.2);E.tilt[i]+=0.2;reply(i,pick(['Charming.','Say that again and see what happens.','Noted.']));return;}
+    if(kind==='apology'){if(tr<0){trustAdj(i,0,0.14*(1-T.grudge)*P);reply(i,T.grudge>0.65?'Words are cheap.':'Fine. We’re good.');}else reply(i,'Nothing to apologise for.');return;}
+    if(kind==='thanks'){if(!rlimit(i,'thanks'))trustAdj(i,0,0.03);reply(i,pick(['Any time.','Cheers.','Good luck.']));return;}
+    if(kind==='promise'){
+      if(rlimit(i,'promise')){reply(i,'You already said that.');return;}
+      if(E.promises.some(p=>p.to===i)){reply(i,'I heard you the first time.');return;}
+      const cred=(1-T.aware*0.5)*P*(E.pstats.broken?0.4:1);trustAdj(i,0,0.1*cred);E.promises.push({to:i,until:E.round+3});
+      reply(i,E.pstats.broken?'You’ve broken promises before. We’ll see.':'I’ll hold you to that.');return;}
+    if(kind==='norob'){
+      if(rlimit(i,'norob')){reply(i,'You asked already.');return;}
+      const pay=resIn(t);const payN=nCards(pay);const has=RES.every(r=>me().res[r]>=(pay[r]||0));
+      if(payN&&!has){reply(i,'You don’t even have that.');return;}
+      const need=botNeeds(G.players[i]);const payVal=RES.reduce((a,r)=>a+(pay[r]||0)*rVal(G.players[i],r,true,need),0);
+      const sc=(tr*0.9+T.coop*0.5-T.greed*0.4+payVal*0.6-(alarmTarget(i)===0?1.2:0)+(vp(0,true)<=Math.min(...BOTS().map(j=>vp(j,true)))?0.3:0))*P+gauss()*0.2;
+      if(sc>0.35){if(payN){RES.forEach(r=>{me().res[r]-=(pay[r]||0);G.players[i].res[r]+=(pay[r]||0);});log(`You give ${G.players[i].name} ${tradeText(pay)}`);}
+        E.pacts[i]={until:E.round+2};E.pstats.deals++;trustAdj(i,0,0.05);reply(i,payN?'Deal. I’ll leave you alone for a couple of rounds.':'Fine, I’ll leave you be for now.');}
+      else reply(i,payN?'Not for that.':T.greed>0.6?'Make it worth my while.':'No promises.');
+      return;}
+    if(kind==='threat'){
+      const dem=resIn(t.split(/\bor\b/)[0]);const dn=nCards(dem);
+      if(dn&&rlimit(i,'demand')){reply(i,'You already tried that.');return;}
+      E.threats.push({to:i,round:E.round,met:false});
+      if(!dn){trustAdj(i,0,-0.1);reply(i,pick(['Go on then.','Try it.']));return;}
+      const B=G.players[i];const r=RES.find(x=>dem[x]);
+      if(B.res[r]<1){reply(i,`I haven’t got any ${RL[r]}.`);return;}
+      const knights=me().dev.length;
+      const sc=((E.cred-0.5)*1.2+(1-T.greed)*0.4-T.tilt*0.6+knights*0.12-(tr<-0.3?0.3:0))*P+gauss()*0.2;
+      if(sc>0.3){B.res[r]--;me().res[r]++;log(`${B.name} hands you 1 ${RL[r]}`);trustAdj(i,0,-0.25);E.tilt[i]+=0.2;reply(i,'Fine. Take it. I won’t forget this.');}
+      else{trustAdj(i,0,-0.15);reply(i,pick(['Try it.','Do your worst.','Not happening.']));}
+      return;}
+    if(kind==='alliance'){
+      const tg=third;
+      if(tg===i){trustAdj(i,0,-0.25);reply(i,pick(['Ha. Nice try.','I can hear you, you know.']));return;}
+      if(rlimit(i,'ally')){reply(i,'Still thinking about it.');return;}
+      const others=ALL().filter(k=>k!==tg&&k!==i);
+      const lead=perceived(i,tg)-Math.max(...others.map(k=>perceived(i,k)));
+      const K=E.king[i];
+      const sc=(lead*0.35+tr*0.8+T.coop*0.3+(alarmTarget(i)===tg?0.6:0)-(K&&K.fav===tg?2:0)-(userLeads()?0.6*T.aware+0.3:0))*P+gauss()*0.25;
+      if(sc>0.35){const al=E.alliance;
+        if(al&&al.target===tg){if(!al.members.includes(i))al.members.push(i);al.withYou=true;al.until=E.round+3;}
+        else E.alliance={target:tg,members:[i],withYou:true,until:E.round+3};
+        trustAdj(i,0,0.05);reply(i,pick(['I’m in.',`Fine. No trades with ${nm(tg)}.`,`Deal. Let’s slow ${nm(tg)} down.`]));}
+      else{const real=maxBy(others.filter(k=>k!==0).concat(userLeads()?[0]:[]),k=>perceived(i,k));
+        reply(i,userLeads()&&T.aware>0.5?'You’re the one I’m worried about.':tr<-0.3?'Why would I help you?':lead<0&&real!=null?`${nm(tg)}’s not the problem. ${real===0?'You are.':nm(real)+' is.'}`:'Not yet. Let’s see how it plays out.');}
+      return;}
+    if(kind==='knights'){
+      const n=(t.match(/\b(two|2)\b/)?2:t.match(/\b(three|3)\b/)?3:1);const plausible=me().dev.length>=n;
+      const bel=(plausible?0.75:0.15)*(1.2-T.aware*0.6)*P;
+      if(Math.random()<bel){E.deter[i]=E.round+1;reply(i,'Noted.');}else reply(i,plausible?'Maybe. Maybe not.':'Sure you do. You haven’t got enough cards for that.');return;}
+    if(kind==='warn'){
+      const tg=third;if(tg===i){reply(i,'Don’t listen to them.');return;}
+      if(rlimit(i,'warn')){reply(i,'Yes, you said.');return;}
+      if(vp(0,true)>vp(tg,true)&&T.aware>0.5){trustAdj(i,0,-0.05);reply(i,'Says the one in the lead.');return;}
+      const sh=(1-T.aware)*1.2*P;E.sway[i][tg]+=sh;E.perc[i][tg]+=sh;reply(i,sh>0.5?'Hm. Maybe you’re right.':'I’ll keep an eye on it.');return;}
+    if(kind==='qneed'){const need=botNeeds(G.players[i]);const r=RES.find(x=>need[x]>0);
+      if(!r){reply(i,'Nothing much right now.');return;}
+      if(tr<-0.1||T.coop<0.35){reply(i,'Wouldn’t you like to know.');return;}
+      const lie=T.greed>0.7&&Math.random()<0.5;reply(i,`I’m after ${RL[lie?pick(RES.filter(x=>x!==r)):r]}.`);return;}
+    if(kind==='qleader'){const j=maxBy(ALL().filter(k=>k!==i),k=>perceived(i,k));reply(i,j===0?'Honestly? You.':`${nm(j)}, I reckon.`);return;}
+    if(kind==='trade'){return;}
+    reply(i,pick(['Not sure what you mean.','Come again?','Hm?']));
+  });
+  if(kind==='trade'){
+    if(G.current!==0||!G.rolled||UI.modal||UI.mode||UI.busy){out.push({i:addr[0]||1,line:'Wait for your turn and offer it then.'});}
+    else{const parts=t.split(/\bfor\b/);let give={},get={};
+      if(parts.length===2){const L0=resIn(parts[0]),R0=resIn(parts[1]);if(/\b(i'?ll give|giving|offering|i can give|i have|swap)\b/.test(parts[0])){give=L0;get=R0;}else{get=L0;give=R0;}}
+      else get=resIn(t);
+      RES.forEach(r=>{if((give[r]||0)>me().res[r])give[r]=me().res[r];});
+      rule('trade');const m={type:'trade',give,get,resp:null,rec:null};if(nCards(give)&&nCards(get)){const c=askCache(),key=offerKey(m);m.resp=c[key]||(c[key]=tableResponses(m));}UI.modal=m;render();return true;}
+  }
+  if(kind==='unknown'&&!G.seen.chatHelp){G.seen.chatHelp=1;coach('tip','What the bots understand','Try: “Theo, let’s team up against Mara”, “Don’t rob me and I’ll give you a wheat”, “I promise I won’t rob you”, “Give me an ore or I’ll rob you”, “I’ve got a knight”, “Mara is about to win”, “What do you need?”, “2 sheep for 1 brick”, “Sorry”.');}
+  setTimeout(()=>{out.forEach((o,k)=>say(o.i,o.line));render();},350);
+  return true;
+}
+
+/* ---------- Bots ---------- */
+function botSetupSettle(p){
+  const v=maxBy(legalSpots(p.i,true),x=>spotScore(x,p.i)+Math.random()*lvl().noise);
+  placeSettlement(p.i,v,G.setupIdx>=NP());G.lastSetup=v.id;log(`${p.name} settles on ${describeSpot(v)}`);
+}
+function setupRoadValue(pi,e,from){
+  const f=G.verts[e.v[0]===from?e.v[1]:e.v[0]];
+  return Math.max(0,...f.adj.map(a=>G.verts[a]).filter(y=>y.id!==from&&spotFree(y)).map(y=>spotScore(y,pi)));
+}
+function botSetupRoad(p){
+  const from=G.lastSetup;const opts=G.verts[from].edges.map(e=>G.edges[e]).filter(e=>canRoad(p.i,e,from));
+  const e=maxBy(opts,e=>setupRoadValue(p.i,e,from)+Math.random()*lvl().noise*0.6);placeRoad(p.i,e);
+}
+function bestRoad(pi){
+  let best=null,bv=0;
+  G.edges.forEach(e=>{if(!canRoad(pi,e))return;let val=0;
+    e.v.forEach(xi=>{const x=G.verts[xi];if(spotFree(x))val=Math.max(val,spotScore(x,pi));
+      x.adj.forEach(yi=>{const y=G.verts[yi];if(spotFree(y))val=Math.max(val,spotScore(y,pi)*0.75);});});
+    if(val>bv){bv=val;best=e;}});
+  return best?{e:best,val:bv}:null;
+}
+function botTarget(p){
+  const hasSett=G.verts.some(v=>v.owner===p.i&&!v.city);
+  const spots=p.settLeft>0&&legalSpots(p.i,false).length>0;
+  const opts=[];
+  if(hasSett&&p.cityLeft>0)opts.push('city');
+  if(spots)opts.push('settlement');
+  if(!spots&&p.settLeft>0&&p.roadsLeft>0&&bestRoad(p.i))opts.push('road');
+  if(G.deck.length)opts.push('dev');
+  if(!opts.length)return null;
+  if(lvl().etb){const val={city:1.2,settlement:1.15,dev:0.5,road:0.45};return maxBy(opts,t=>val[t]/(etb(p,COST[t])+1));}
+  return minBy(opts,t=>missing(p,COST[t])+(t==='dev'?1.2:0)+(t==='road'?0.3-TBL().settleBias*0.5:0)-(t==='settlement'?0.4+TBL().settleBias:0));
+}
+function etb(p,cost){
+  const pp=prodPips(p.i);let worst=0;
+  for(const r in cost){const d=cost[r]-p.res[r];if(d<=0)continue;const rate=Math.max(0.03,pp[r]/36*4);worst=Math.max(worst,d/rate);}
+  const plan=bankPlan(p,cost);if(plan)worst=Math.min(worst,0.3*plan.length);
+  return Math.min(worst,12);
+}
+function botNeeds(p){const t=botTarget(p);const n={};if(t)for(const r in COST[t])n[r]=Math.max(0,COST[t][r]-p.res[r]);return n;}
+function botDiscard(p,n){
+  if(!SIM&&G.econ&&n>=4)G.econ.tilt[p.i]+=0.2;
+  const need=botNeeds(p);
+  for(let k=0;k<n;k++){const r=maxBy(RES.filter(r=>p.res[r]>0),r=>p.res[r]-(need[r]?1.5:0));p.res[r]--;G.bank[r]++;}
+  log(`${p.name} discards ${n} cards`);
+}
+function econRobBonus(p,x){
+  if(SIM||!G.econ||!G.econ.traits[p.i])return 0;let s=0;econExtras();
+  const E=G.econ,pact=E.pacts[p.i]&&!E.pacts[p.i].breaking,det=(E.deter[p.i]||-1)>=E.round;
+  if(G.hexes[x].verts.some(vi=>G.verts[vi].owner===0)){if(pact)s-=60;if(det)s-=6;}const al=G.econ.alliance,K=G.econ.king[p.i],tilted=G.econ.tilt[p.i]*TR(p.i).tilt>0.3;
+  G.hexes[x].verts.forEach(vi=>{const o=G.verts[vi].owner;if(o==null||o===p.i)return;
+    if(al&&al.target===o&&al.members.includes(p.i))s+=4;if(K&&K.foe===o)s+=4;const t=G.econ.trust[p.i][o];if(t<0)s+=-t*3*(tilted?2:1);});
+  return s;
+}
+function botRobber(p){
+  const L=lvl();let h;
+  if(!SIM&&G.econ&&G.econ.pacts&&G.econ.pacts[p.i]){const T=TR(p.i);if(G.econ.tilt[p.i]*T.tilt>0.3||(T.loyal<0.3&&Math.random()<0.35))G.econ.pacts[p.i].breaking=true;}
+  if(Math.random()<L.randRobber){const ok=G.hexes.filter(x=>x.id!==G.robber&&!x.verts.some(v=>G.verts[v].owner===p.i)&&x.verts.some(v=>G.verts[v].owner!=null));h=(ok.length?ok[rnd(ok.length)]:G.hexes.find(x=>x.id!==G.robber)).id;}
+  else h=maxBy(G.hexes.map(x=>x.id),x=>robberScore(x,p.i)+econRobBonus(p,x)+(L.etb?G.hexes[x].verts.reduce((s2,vi)=>{const o=G.verts[vi].owner;return o!=null&&o!==p.i?s2+vp(o,true)*0.6:s2;},0):0)+Math.random()*0.3);
+  moveRobber(h,p.i);
+  if(!SIM&&G.econ&&G.econ.pacts&&G.econ.pacts[p.i]){if(G.hexes[h].verts.some(vi=>G.verts[vi].owner===0)){say(p.i,pick(['Nothing personal.','Sorry, a deal’s a deal… until it isn’t.']));coach('tip',`${p.name} broke their word`,`${p.name} agreed to leave you alone, then robbed you anyway. Remember that next time they ask for something.`);delete G.econ.pacts[p.i];}else delete G.econ.pacts[p.i].breaking;}
+  const vsAll=victims(h,p.i);const shield=!SIM&&G.econ&&G.econ.pacts&&(G.econ.pacts[p.i]||(G.econ.deter&&(G.econ.deter[p.i]||-1)>=G.econ.round));
+  const vs=shield&&vsAll.length>1?vsAll.filter(x=>x!==0):vsAll;
+  if(vs.length)steal(p.i,maxBy(vs,x=>vp(x,true)*10+handCount(G.players[x])+(!SIM&&G.econ&&G.econ.traits[p.i]?-G.econ.trust[p.i][x]*15+((G.econ.alliance&&G.econ.alliance.target===x&&G.econ.alliance.members.includes(p.i))?30:0):0)));
+}
+function botAct(p){
+  const ti=p.i;
+  if(!p.playedDev){
+    const has=t=>p.dev.some(d=>d.type===t&&d.turn!==G.turn);
+    if(has('knight')&&(robberOnMe(ti)||(p.knights+1>=3&&G.la!==ti&&(G.la==null||p.knights+1>G.players[G.la].knights)))){
+      useDev(p,'knight');p.knights++;log(`${p.name} plays a Knight`);updateLA(ti);botRobber(p);return true;}
+    if(has('road')&&p.roadsLeft>0&&bestRoad(ti)){
+      useDev(p,'road');let n=0;
+      for(let k=0;k<2&&p.roadsLeft>0;k++){const b=bestRoad(ti);const e=b?b.e:G.edges.find(x=>canRoad(ti,x));if(e){placeRoad(ti,e);n++;}}
+      log(`${p.name} plays Road Building (${n} free roads)`);updateLR();return true;}
+    if(has('plenty')){const t=botTarget(p);const need=[];if(t)for(const r in COST[t])for(let i=p.res[r];i<COST[t][r];i++)need.push(r);
+      if(need.length){useDev(p,'plenty');const a=need[0],b=need[1]||need[0];give(p,a,1);give(p,b,1);log(`${p.name} plays Year of Plenty (${RL[a]}, ${RL[b]})`);return true;}}
+    if(has('mono')){let best=null,bc=0;RES.forEach(r=>{const c=G.players.reduce((s,o)=>o.i===ti?s:s+o.res[r],0);if(c>bc){bc=c;best=r;}});
+      if(bc>=TBL().mono){useDev(p,'mono');let lost=0;G.players.forEach(o=>{if(o.i===ti)return;if(o.i===0)lost=o.res[best];if(o.i!==0&&o.res[best]&&!SIM&&G.econ)trustAdj(o.i,ti,-0.35*(0.5+TR(o.i).grudge));p.res[best]+=o.res[best];o.res[best]=0;});
+        log(`${p.name} plays Monopoly on ${RL[best]} and collects ${bc}`);if(lost)coach('tip','Monopoly',`${p.name} took all ${lost} of your ${RL[best]}. Holding a big stack of one resource makes you a Monopoly target.`);return true;}}
+  }
+  const L=lvl();
+  if(Math.random()<L.skip)return false;
+  if(L.impulseDev&&afford(p,COST.dev)&&G.deck.length&&Math.random()<L.impulseDev){buyDevCard(p);log(`${p.name} buys a development card`);return true;}
+  if(afford(p,COST.city)&&p.cityLeft>0){const s=G.verts.filter(v=>v.owner===ti&&!v.city);
+    if(s.length){const v=maxBy(s,vPips);pay(p,COST.city);v.city=true;p.cityLeft--;p.settLeft++;log(`${p.name} builds a city (${vPips(v)} pips)`);return true;}}
+  if(L.roadBias&&afford(p,COST.road)&&p.roadsLeft>0&&Math.random()<L.roadBias){const b=bestRoad(ti)||(G.edges.some(x=>canRoad(ti,x))?{e:G.edges.filter(x=>canRoad(ti,x))[0]}:null);
+    if(b){pay(p,COST.road);placeRoad(ti,b.e);log(`${p.name} builds a road`);updateLR();return true;}}
+  if(afford(p,COST.settlement)&&p.settLeft>0){const c=legalSpots(ti,false);
+    if(c.length){const v=maxBy(c,x=>spotScore(x,ti)+Math.random()*L.noise);pay(p,COST.settlement);placeSettlement(ti,v,false);log(`${p.name} builds a settlement on ${describeSpot(v)}`);return true;}}
+  if(afford(p,COST.road)&&p.roadsLeft>0&&p.settLeft>0&&legalSpots(ti,false).length===0){const b=bestRoad(ti);
+    if(b){pay(p,COST.road);placeRoad(ti,b.e);log(`${p.name} builds a road`);updateLR();return true;}}
+  if(afford(p,COST.dev)&&G.deck.length){const t=botTarget(p);
+    if(t==='dev'||(p.res.ore>=4&&p.res.wheat>=3)||(t!=='city'&&t!=='settlement'&&Math.random()<0.6)){buyDevCard(p);log(`${p.name} buys a development card`);return true;}}
+  if(p._trades<L.trades+TBL().trades){const t=botTarget(p);if(t&&t!=='dev'){const plan=bankPlan(p,COST[t]);
+    if(plan&&plan.length){const tr=plan[0];doBankTrade(p,tr.give,tr.get);p._trades++;log(`${p.name} trades ${tr.n} ${RL[tr.give]} to the bank for ${RL[tr.get]}`);return true;}}}
+  if(L.manageHand&&handCount(p)>7&&p._trades<L.trades+2){const need=botNeeds(p);const g=maxBy(RES.filter(r=>p.res[r]>=ratio(ti,r)),r=>p.res[r]-(need[r]?3:0));
+    const want=maxBy(RES.filter(r=>r!==g&&G.bank[r]>0),r=>(need[r]||0)*2-p.res[r]);
+    if(g&&want){doBankTrade(p,g,want);p._trades++;log(`${p.name} trades ${ratio(ti,g)} ${RL[g]} to the bank for ${RL[want]}`);return true;}}
+  return false;
+}
+async function botTurn(i,id){
+  const P=()=>G.players[i];
+  render();await sleep(spd());if(id!==GAME_ID)return;
+  if(P().dev.some(d=>d.type==='knight'&&d.turn!==G.turn)&&robberOnMe(i)){
+    const p=P();useDev(p,'knight');p.knights++;log(`${p.name} plays a Knight before rolling`);updateLA(i);botRobber(p);
+    render();await sleep(spd());if(id!==GAME_ID)return;checkWin();if(G.winner!=null)return;
+  }
+  await doRoll(i);if(id!==GAME_ID)return;render();await sleep(spd());if(id!==GAME_ID)return;
+  let offered=false;
+  for(let g=0;g<14&&G.winner==null;g++){
+    if(!botAct(P())){
+      if(!offered&&!P()._noOffer){offered=true;const made=await tradeSession(i,id);if(id!==GAME_ID)return;if(made){render();await sleep(spd()*0.6);if(id!==GAME_ID)return;continue;}}
+      break;}
+    checkWin();render();await sleep(spd()*0.75);if(id!==GAME_ID)return;
+  }
+}
+function userTarget(res){
+  const p=me();const r=res||p.res;const sets=G.verts.some(v=>v.owner===0&&!v.city)&&p.cityLeft>0;const spots=legalSpots(0,false).length&&p.settLeft>0;
+  const opts=[];if(sets)opts.push('city');if(spots)opts.push('settlement');if(G.deck.length)opts.push('dev');
+  if(!opts.length)return null;return minBy(opts,t=>missingR(r,COST[t])+(t==='dev'?1.5:0));
+}
+function missingR(res,c){return Object.keys(c).reduce((s,r)=>s+Math.max(0,c[r]-res[r]),0);}
+function evalOffer(i,give,get){
+  // give: what the bot gives you; get: what you give the bot
+  const p=me(),b=G.players[i];const after={...p.res};RES.forEach(r=>{after[r]+=(give[r]||0)-(get[r]||0);});
+  const t=userTarget();const t2=userTarget(after);
+  const bef=t?missingR(p.res,COST[t]):0,aft=t?missingR(after,COST[t]):0;
+  const n=o=>RES.reduce((s,r)=>s+(o[r]||0),0);
+  let score=(bef-aft)*1.0+(n(give)-n(get))*0.35;const why=[];
+  if(t){if(aft===0&&bef>0)why.push(`it completes your ${t}`);else if(aft<bef)why.push(`it brings you ${bef-aft} card${bef-aft>1?'s':''} closer to a ${t}`);else if(aft>bef)why.push(`it takes you further from a ${t}`);}
+  const bAfter={...b.res};RES.forEach(r=>{bAfter[r]+=(get[r]||0)-(give[r]||0);});const bt=botTarget(b);
+  const bComplete=bt&&bt!=='dev'&&missingR(bAfter,COST[bt])===0&&missingR(b.res,COST[bt])>0;
+  const bv=vp(i,true);
+  if(bComplete){score-=0.6;why.push(`it lets ${b.name} build a ${bt}`);}
+  if(bv>=7){score-=1.6;why.push(`${b.name} is on ${bv} points`);}
+  if(n(get)>n(give))why.push(`you give more cards than you get`);
+  const verdict=score>=0.5?'good':score>=-0.2?'fair':'bad';
+  const great=aft===0&&bef>0&&bv<7;
+  return{verdict,score,why,great};
+}
+async function botOffer(i,id){
+  const L=lvl(),b=G.players[i],p=me();
+  if(p.bot||Math.random()>L.offerP||vp(0,true)>=L.refuseAt)return false;
+  const t=botTarget(b);if(!t||t==='dev')return false;const cost=COST[t];
+  if(missing(b,cost)>2)return false;
+  const want=RES.find(r=>b.res[r]<(cost[r]||0)&&p.res[r]>0);if(!want)return false;
+  const sur=r=>b.res[r]-(cost[r]||0);
+  const spare=RES.filter(r=>r!==want&&sur(r)>0).sort((x,y)=>sur(y)-sur(x));if(!spare.length)return false;
+  let give={[spare[0]]:1},get={[want]:1};
+  if(L.generous&&sur(spare[0])>=2&&Math.random()<0.5)give={[spare[0]]:2};
+  if(L.greedy&&p.res[want]>=2&&Math.random()<0.3)get={[want]:2};
+  rule('offers');
+  for(;;){
+    const ev=evalOffer(i,give,get);const snap=JSON.stringify(G),cid=G.cid||0;
+    UI.modal={type:'offer',from:i,give,get,ev};render();
+    const ans=await waitFor('offer');if(id!==GAME_ID)return true;UI.modal=null;
+    const accepted=ans==='accept'&&RES.every(r=>p.res[r]>=(get[r]||0));
+    if(accepted){
+      const me0=me(),bb=G.players[i];RES.forEach(r=>{me0.res[r]+=(give[r]||0)-(get[r]||0);bb.res[r]+=(get[r]||0)-(give[r]||0);});
+      G.stats.trades++;log(`You accept ${bb.name}'s offer: ${tradeText(give)} for your ${tradeText(get)}`);
+      if(ev.verdict==='bad')coach('warn','That offer helped them more than you',`Looking at it again: ${list(ev.why)||'it gave them more than you'}. Decline offers like this unless the card is urgent for you.`,'badDeal');
+      else coach('good','Fair trade',`You accepted ${bb.name}'s offer: ${list(ev.why)||'an even swap'}.`);
+    }else{
+      log(`You decline ${G.players[i].name}'s offer`);
+      if(ev.great)coach('warn','You turned down a build',`That offer would have completed your ${userTarget()}, and ${G.players[i].name} isn't close to winning. Deals that finish one of your builds are usually worth taking.`,'missedDeal');
+    }
+    const w=warnsSince(cid);
+    if(ALERTS&&w.length){UI.modal={type:'mistake',warns:w,async:true,what:'offer'};render();const c=await waitFor('mistake');if(id!==GAME_ID)return true;UI.modal=null;
+      if(c==='back'){restoreSnap(snap);continue;}}
+    {const bn=G.players[i].name;let other;
+      if(accepted)other=snap;else{const t=JSON.parse(snap);RES.forEach(r=>{t.players[0].res[r]+=(give[r]||0)-(get[r]||0);t.players[i].res[r]+=(get[r]||0)-(give[r]||0);});other=JSON.stringify(t);}
+      gradeMove(`${accepted?'accepting':'declining'} ${bn}’s offer`,{kind:'none',base:JSON.stringify(G)},[{kind:'none',base:other,label:accepted?'declining it':'accepting it'}]);}
+    break;
+  }
+  return true;
+}
+function botView(b,r,delta){
+  const need=botNeeds(b);let v=1;
+  if(delta>0){if((need[r]||0)>0)v+=0.8;if(b.res[r]>=3)v-=0.4;}
+  else{if((need[r]||0)>0||(COST.city[r]&&b.res[r]<=COST.city[r]))v+=0.6;if(b.res[r]>=3)v-=0.5;}
+  return v;
+}
+function botConsider(b,giveM,getM){const d=decide(b,0,giveM,getM,{exact:true,noCounter:true});return{ok:d.act==='accept',why:d.why};}
+
+/* ---------- Coach ---------- */
+function rateSetup(v){
+  const cands=legalSpots(0,true);
+  const best=maxBy(cands,x=>spotScore(x,0));
+  const mine=spotScore(v,0),top=spotScore(best,0);
+  const pips=vPips(v);const hit=new Set(v.hexes.map(h=>G.hexes[h].num).filter(Boolean));
+  const chance=[...hit].reduce((s,n)=>s+PIPS[n],0);
+  const pct=Math.round(chance/36*100);
+  if(mine>=top*0.9||best===v){coach('good','Strong spot',`${describeSpot(v)}. One of its numbers comes up on about ${pct}% of rolls.`);return;}
+  UI.hint={verts:[best.id],edges:[],hexes:[]};
+  const why=[];
+  if(vPips(best)>pips)why.push(`${vPips(best)-pips} more pips`);
+  const rs=new Set(v.hexes.map(h=>G.hexes[h].res).filter(r=>r!=='desert'));
+  const brs=new Set(best.hexes.map(h=>G.hexes[h].res).filter(r=>r!=='desert'));
+  if(brs.size>rs.size)why.push('more resource types');
+  if(v.hexes.some(h=>G.hexes[h].res==='desert'))why.push('no desert');
+  if(mine>=top*0.75)coach('tip','Decent, but there was better',`You took ${describeSpot(v)}. The gold-ringed corner had ${list(why)||'a better mix'}: ${describeSpot(best)}.`);
+  else coach('warn','Weak starting spot',`You took ${describeSpot(v)}, about ${pct}% of rolls. The gold-ringed corner offered ${describeSpot(best)}${why.length?' ('+list(why)+')':''}. Starting spots decide most of your income, so count the dots.`,'weakSpot');
+}
+function afterSetupCoach(){
+  const pp=prodPips(0);const tot=RES.reduce((s,r)=>s+pp[r],0);const miss=RES.filter(r=>pp[r]===0).map(r=>RL[r]);
+  let t=`Your settlements touch ${tot} pips, so expect roughly ${(tot/36*10).toFixed(1)} cards every 10 rolls (20+ pips is a solid start). `;
+  if(miss.length)t+=`You produce no ${list(miss)}. `;
+  if(pp.ore===0||pp.wheat===0)t+='Cities need 2 Wheat and 3 Ore, so aim your roads at Ore or Wheat corners or a harbour. ';
+  if(pp.wood===0||pp.brick===0)t+='Roads and settlements need Wood and Brick, so you will be trading for them early. ';
+  t+=(pp.ore+pp.wheat>pp.wood+pp.brick)?'Your strength is Ore and Wheat: lean toward cities and development cards.':'Your strength is Wood and Brick: expand fast with roads and settlements while good corners are open.';
+  coach(tot>=20&&!miss.length?'good':'tip','Your starting position',t);
+}
+function userTurnStart(){
+  rule('roll');
+  G.players.forEach(o=>{if(o.bot&&vp(o.i,true)>=8&&!G.warnedLeader[o.i]){G.warnedLeader[o.i]=1;
+    coach('warn',`${o.name} is close to winning`,`${o.name} shows ${vp(o.i,true)} VP, plus any hidden VP cards. Refuse their trades and put the robber on their best hex.`);}});
+  if(robberOnMe(0)&&me().dev.some(d=>d.type==='knight'&&d.turn!==G.turn))
+    coach('tip','Play your Knight before rolling','The robber is on one of your hexes. A Knight played now moves it before the dice decide this turn’s income.');
+}
+function coachEndTurn(){
+  const p=me();const sets=G.verts.filter(v=>v.owner===0&&!v.city);const spots=legalSpots(0,false);
+  if(afford(p,COST.city)&&p.cityLeft>0&&sets.length)
+    coach('warn','You left a city unbuilt','You had 2 Wheat and 3 Ore and a settlement to upgrade. A city is +1 VP and doubles that corner’s income.','missedBuild');
+  else if(afford(p,COST.settlement)&&p.settLeft>0&&spots.length)
+    coach('warn','You left a settlement unbuilt','You could afford a settlement and had an open corner. That is +1 VP and new income you passed up.','missedBuild');
+  else{
+    let done=false;
+    for(const t of ['city','settlement']){if(done)break;
+      if(t==='city'&&(!sets.length||p.cityLeft<=0))continue;
+      if(t==='settlement'&&(!spots.length||p.settLeft<=0))continue;
+      const plan=bankPlan(p,COST[t]);
+      if(plan&&plan.length){done=true;coach('tip',`A bank trade would have built a ${t}`,`${plan.map(x=>`${x.n} ${RL[x.give]} for 1 ${RL[x.get]}`).join(', then ')} would have completed it.`,'missedTrade');}}
+  }
+  const n=handCount(p);
+  if(n>7)coach('warn',`Ending with ${n} cards`,`If anyone rolls a 7 before your next turn you discard ${Math.floor(n/2)}. A 7 comes up on 1 roll in 6.`,'bigHand');
+}
+function coachRobber(h){
+  const H=G.hexes[h];
+  if(H.verts.some(v=>G.verts[v].owner===0)){coach('warn','You blocked your own hex',`${TERR[H.res]}${H.num?' ('+H.num+')':''} touches your own building, so it stops paying you too.`,'robberSelf');return;}
+  const opp=H.verts.some(v=>{const o=G.verts[v].owner;return o!=null&&o!==0;});
+  const best=maxBy(G.hexes.map(x=>x.id),x=>robberScore(x,0));
+  if(!opp){UI.hint={verts:[],edges:[],hexes:[best]};coach('warn','The robber is doing nothing there','No opponent builds on that hex, so you block nobody and steal nothing. The gold hex would have hurt the leader.','robberWeak');return;}
+  const s=robberScore(h,0),bs=robberScore(best,0);
+  if(s<bs*0.6){
+    const leader=maxBy(G.players.filter(o=>o.bot),o=>vp(o.i,true));
+    UI.hint={verts:[],edges:[],hexes:[best]};
+    coach('warn','There was a stronger robber hex',`The gold-ringed ${TERR[G.hexes[best].res]} (${G.hexes[best].num}) hits more income${leader?', including '+leader.name+' at '+vp(leader.i,true)+' VP':''}.`,'robberWeak');
+  }else coach('good','Good robber placement',`${TERR[H.res]} (${H.num}) is a productive hex for your opponents.`);
+}
+const BUILD_VAL={city:10,settlement:9.5,road:2.5,dev:4};
+const tradeText=o=>RES.filter(r=>o[r]).map(r=>`${o[r]} ${RL[r]}`).join(' + ');
+function twoSpots(spots){for(let i=0;i<spots.length;i++)for(let j=i+1;j<spots.length;j++)if(!spots[i].adj.includes(spots[j].id))return true;return false;}
+function tradeGoals(){
+  const p=me();const sets=G.verts.filter(v=>v.owner===0&&!v.city);const spots=legalSpots(0,false);
+  const cC=n=>sets.length>=n&&p.cityLeft>=n,cS=n=>p.settLeft>=n&&(n===1?spots.length>0:twoSpots(spots));
+  const cR=p.settLeft>0&&!spots.length&&p.roadsLeft>0&&!!bestRoad(0),cD=n=>G.deck.length>=n;
+  const B=[];const add=(it,ok)=>{if(ok)B.push(it);};
+  add(['city'],cC(1));add(['settlement'],cS(1));add(['road'],cR);add(['dev'],cD(1));
+  add(['city','settlement'],cC(1)&&cS(1));add(['city','city'],cC(2));add(['settlement','settlement'],cS(2));
+  add(['city','dev'],cC(1)&&cD(1));add(['settlement','dev'],cS(1)&&cD(1));add(['road','road'],cR&&p.roadsLeft>=2);add(['dev','dev'],cD(2));
+  return B;
+}
+function sumCost(items){const c={};items.forEach(t=>{for(const r in COST[t])c[r]=(c[r]||0)+COST[t][r];});return c;}
+function tradePartners(){return G.players.filter(o=>o.bot&&vp(o.i,true)<7).map(o=>({o,res:{...o.res}}));}
+function simAccepts(b,give,get){return botConsider(Object.assign({},b.o,{res:b.res}),give,get).ok;}
+function planTrades(cost){
+  const mine={...me().res};const bots=tradePartners();const steps=[];let given=0;
+  for(let g=0;g<8;g++){
+    const need=RES.find(r=>mine[r]<(cost[r]||0));if(!need)return{steps,given};
+    const surplus=r=>mine[r]-(cost[r]||0);
+    const spare=RES.filter(r=>r!==need&&surplus(r)>0).sort((a,b)=>surplus(b)-surplus(a));
+    const opts=[];
+    for(const r of spare){const acc=bots.filter(b=>b.res[need]>=1&&simAccepts(b,{[r]:1},{[need]:1}));if(acc.length){opts.push({kind:'player',cost:1,give:{[r]:1},get:{[need]:1},acc});break;}}
+    if(!opts.length){
+      const pairs=[];spare.forEach((a,i)=>{if(surplus(a)>=2)pairs.push({[a]:2});spare.slice(i+1).forEach(b=>pairs.push({[a]:1,[b]:1}));});
+      for(const gv of pairs){const acc=bots.filter(b=>b.res[need]>=1&&simAccepts(b,gv,{[need]:1}));if(acc.length){opts.push({kind:'player',cost:2,give:gv,get:{[need]:1},acc});break;}}
+    }
+    const br=maxBy(spare.filter(r=>surplus(r)>=ratio(0,r)),r=>surplus(r)-ratio(0,r)*0.5);
+    if(br&&G.bank[need]>0)opts.push({kind:'bank',cost:ratio(0,br),give:br,get:need,n:ratio(0,br)});
+    if(!opts.length)return null;
+    const o=minBy(opts,x=>x.cost+(x.kind==='bank'?0.1:0));
+    if(o.kind==='bank'){mine[o.give]-=o.n;mine[need]++;steps.push({kind:'bank',give:o.give,get:need,n:o.n});given+=o.n;}
+    else{const who=minBy(o.acc,b=>vp(b.o.i,true)*10+handCount(b.o));
+      for(const r in o.give){mine[r]-=o.give[r];who.res[r]+=o.give[r];}mine[need]++;who.res[need]--;
+      steps.push({kind:'player',give:o.give,get:o.get,who:who.o.i,alt:o.acc.map(b=>b.o.i)});given+=o.cost;}
+  }
+  return null;
+}
+function tradeSearch(){
+  const p=me();let best=null;
+  for(const items of tradeGoals()){const plan=planTrades(sumCost(items));if(!plan)continue;
+    const sc=items.reduce((s,t)=>s+BUILD_VAL[t],0)-0.55*plan.given-0.15*plan.steps.length;
+    if(!best||sc>best.sc)best={items,plan,sc};}
+  let improve=null;
+  if(!best){
+    const sets=G.verts.some(v=>v.owner===0&&!v.city)&&p.cityLeft>0;const spots=legalSpots(0,false).length&&p.settLeft>0;
+    const tgt=sets&&(!spots||missing(p,COST.city)<=missing(p,COST.settlement))?'city':spots?'settlement':null;
+    if(tgt){const cost=COST[tgt];const need=RES.filter(r=>p.res[r]<(cost[r]||0));const spare=RES.filter(r=>p.res[r]-(cost[r]||0)>0).sort((a,b)=>(p.res[b]-(cost[b]||0))-(p.res[a]-(cost[a]||0)));
+      const goal=tgt==='city'?'a city':'a settlement';
+      outer:for(const nd of need)for(const r of spare){const acc=tradePartners().filter(b=>b.res[nd]>=1&&simAccepts(b,{[r]:1},{[nd]:1}));
+        if(acc.length){const who=minBy(acc,b=>vp(b.o.i,true));improve={kind:'player',give:{[r]:1},get:{[nd]:1},who:who.o.i,alt:acc.map(b=>b.o.i),goal};break outer;}}
+      if(!improve&&handCount(p)>7){for(const nd of need){const g=maxBy(spare.filter(r=>p.res[r]-(cost[r]||0)>=ratio(0,r)),r=>p.res[r]);if(g&&G.bank[nd]>0){improve={kind:'bank',give:g,get:nd,n:ratio(0,g),goal};break;}}}
+    }
+  }
+  return{best,improve};
+}
+function plentyPick(canCityT,canSetT){
+  const p=me();const r={...p.res};const sel={};let then='';
+  const ts=[['city',canCityT],['settlement',canSetT]].filter(([t,ok])=>ok&&missing(p,COST[t])<=2).map(([t])=>t);
+  const t=ts.includes('city')&&(!ts.includes('settlement')||missing(p,COST.city)<=missing(p,COST.settlement))?'city':ts[0];
+  const take=x=>{if(nCards(sel)>=2||G.bank[x]-(sel[x]||0)<1)return false;sel[x]=(sel[x]||0)+1;r[x]++;return true;};
+  RES.forEach(x=>{while(r[x]<(COST[t][x]||0)&&take(x));});
+  then=t==='city'?'upgrade your best settlement to a city':'build a settlement';
+  if(nCards(sel)<2){
+    // second card: help the next build after this one, else the resource you produce least
+    const after={...r};for(const x in COST[t])after[x]-=COST[t][x];
+    const next=['city','settlement','dev'].find(n=>n!==t&&(n!=='city'||canCityT)&&(n!=='settlement'||canSetT||p.settLeft>0));
+    const need=next?RES.filter(x=>after[x]<(COST[next][x]||0)):[];
+    const pp=prodPips(0);const pickR=need.length?minBy(need,x=>pp[x]):minBy(RES.filter(x=>G.bank[x]>0),x=>pp[x]+r[x]);
+    if(pickR&&take(pickR)&&need.length)then+=`, and you’ll be closer to a ${next==='dev'?'development card':next}`;
+  }
+  return{sel,then};
+}
+function bestMove(){
+  const p=me();const M={verts:[],edges:[],hexes:[],glow:null,label:null,trade:null};const lines=[];
+  const setLabel=(x,y,text)=>{M.label={x,y,text};};
+  const playable=t=>!p.playedDev&&p.dev.some(d=>d.type===t&&d.turn!==G.turn);
+  if(G.phase==='setup'){
+    if(UI.mode==='setup-settle'){const c=legalSpots(0,true).sort((a,b)=>spotScore(b,0)-spotScore(a,0));const v=c[0];
+      M.verts=[v.id];setLabel(v.x,v.y-24,'Settle here');
+      lines.push(`Settle on ${describeSpot(v)}. It scores best for pips, resource mix${G.setupIdx>=NP()?' and what your first settlement lacks':''}.`);
+      if(c[1])lines.push(`Runner-up: ${describeSpot(c[1])}.`);}
+    else if(UI.mode==='setup-road'){const from=UI.setupVert;const e=maxBy(G.verts[from].edges.map(x=>G.edges[x]).filter(x=>canRoad(0,x,from)),x=>setupRoadValue(0,x,from));
+      const[a,b]=e.v.map(x=>G.verts[x]);M.edges=[e.id];setLabel((a.x+b.x)/2,(a.y+b.y)/2-18,'Road here');
+      lines.push('This road points toward the best corner you could reach next.');}
+    return{M,lines};
+  }
+  if(UI.mode==='robber'){const b=maxBy(G.hexes.map(x=>x.id),x=>robberScore(x,0));const h=G.hexes[b];M.hexes=[b];setLabel(h.x,h.y+36,'Robber here');
+    const opp=[...new Set(h.verts.map(v=>G.verts[v].owner).filter(o=>o!=null&&o!==0))].map(nm);
+    lines.push(`Block ${TERR[h.res]} (${h.num}). It hits ${list(opp)||'nobody'}, weighted toward whoever leads.`);return{M,lines};}
+  if(!G.rolled){
+    if(robberOnMe(0)&&playable('knight')){M.glow='dev-knight';lines.push('Play your Knight before rolling: the robber is on your hex, and moving it first means this roll can pay you.');}
+    else{M.glow='roll';lines.push('Roll the dice. Nothing is worth doing before the roll this turn.');}
+    return{M,lines};
+  }
+  const sets=G.verts.filter(v=>v.owner===0&&!v.city);const spots=legalSpots(0,false);
+  const canCityT=sets.length&&p.cityLeft>0,canSetT=spots.length&&p.settLeft>0;
+  const T=tradeSearch();
+  const leaders=G.players.filter(o=>o.bot&&vp(o.i,true)>=7).map(o=>`${o.name} (${vp(o.i,true)} VP)`);
+  const leaderNote=leaders.length?` I've left ${list(leaders)} out of any deal: don't feed the leader.`:'';
+  const markBuild=(t,lab)=>{
+    if(t==='city'){const v=maxBy(sets,vPips);M.verts.push(v.id);setLabel(v.x,v.y-26,lab||'Upgrade to city');return `upgrade the ${vPips(v)}-pip settlement to a city`;}
+    if(t==='settlement'){const v=maxBy(spots,x=>spotScore(x,0));M.verts.push(v.id);setLabel(v.x,v.y-24,lab||'Build settlement');return `build a settlement on ${describeSpot(v)}`;}
+    if(t==='road'){const b=bestRoad(0);if(b){const[a,c]=b.e.v.map(x=>G.verts[x]);M.edges.push(b.e.id);setLabel((a.x+c.x)/2,(a.y+c.y)/2-18,lab||'Road here');}return 'build a road toward the best open corner';}
+    return 'buy a development card';
+  };
+  const best=T.best;
+  if(best&&!best.plan.steps.length&&best.items.some(t=>t==='city'||t==='settlement')){
+    const first=best.items[0];const what=markBuild(first);M.glow='build-'+first;
+    lines.push(`${what[0].toUpperCase()+what.slice(1)}.${best.items.length>1?` You can also afford to ${best.items.slice(1).map(t=>({city:'build a city',settlement:'build a settlement',road:'build a road',dev:'buy a development card'})[t]).join(' and ')} after it.`:''}`);
+  }
+  else if(playable('plenty')&&[['city',canCityT],['settlement',canSetT]].some(([t,ok])=>ok&&missing(p,COST[t])<=2)){
+    const pk=plentyPick(canCityT,canSetT);M.glow='dev-plenty';M.plenty=pk.sel;
+    lines.push(`Play Year of Plenty and take ${tradeText(pk.sel)}, then ${pk.then}. The card opens with those already selected.`);}
+  else if(playable('knight')&&(robberOnMe(0)||(p.knights+1>=3&&G.la!==0&&(G.la==null||p.knights+1>G.players[G.la].knights)))){M.glow='dev-knight';
+    lines.push(robberOnMe(0)?'Play a Knight to get the robber off your hex.':'Play a Knight: it takes Largest Army (+2 VP).');}
+  else if(!canSetT&&p.settLeft>0&&playable('road')&&bestRoad(0)&&!(best&&best.items.includes('city'))){const b=bestRoad(0);const[a,c]=b.e.v.map(x=>G.verts[x]);M.edges=[b.e.id];setLabel((a.x+c.x)/2,(a.y+c.y)/2-18,'Road here');
+    M.glow='dev-road';lines.push('Play Road Building and lay roads starting here, toward the best open corner.');}
+  else if(best){
+    const st=best.plan.steps;const goal=best.items.map(t=>({city:'a city',settlement:'a settlement',road:'a road',dev:'a development card'})[t]).join(' and ');
+    if(!st.length){const what=markBuild(best.items[0]);M.glow='build-'+best.items[0];lines.push(`${what[0].toUpperCase()+what.slice(1)}.${best.items.length>1?' You can afford a second one after it.':''}`);}
+    else{
+      const s0=st[0];
+      if(s0.kind==='player'){M.glow='trade';M.ptrade=s0;
+        lines.push(`Trade first: offer ${tradeText(s0.give)} for ${tradeText(s0.get)}. ${list(s0.alt.map(nm))} would accept${s0.alt.length>1?`; ${nm(s0.who)} is the safest partner (fewest points)`:''}. The trade window opens with this offer ready.`);}
+      else{M.glow='bank';M.trade=s0;lines.push(`Trade first: ${s0.n} ${RL[s0.give]} to the bank for 1 ${RL[s0.get]}. The trade window opens with it selected.`);}
+      if(st.length>1)lines.push(`Then ${st.slice(1).map(x=>x.kind==='player'?`offer ${tradeText(x.give)} for ${tradeText(x.get)} (${list(x.alt.map(nm))} would accept)`:`bank ${x.n} ${RL[x.give]} for 1 ${RL[x.get]}`).join(', then ')}.`);
+      const where=best.items.filter(t=>t==='city'||t==='settlement'||t==='road');if(where.length)markBuild(where[0],'Then build here');
+      lines.push(`That gets you ${goal} this turn, for ${best.plan.given} card${best.plan.given===1?'':'s'} traded away.`);
+    }
+    lines.push(leaderNote);
+  }
+  else if(T.improve){const s0=T.improve;
+    if(s0.kind==='player'){M.glow='trade';M.ptrade=s0;lines.push(`No build is reachable this turn, but you can improve your hand: offer ${tradeText(s0.give)} for ${tradeText(s0.get)} (${list(s0.alt.map(nm))} would accept). It moves you closer to ${s0.goal}.${leaderNote}`);}
+    else{M.glow='bank';M.trade=s0;lines.push(`You hold ${handCount(p)} cards, so protect your hand: bank ${s0.n} ${RL[s0.give]} for 1 ${RL[s0.get]}. That drops you to ${handCount(p)-s0.n+1} cards and moves you closer to ${s0.goal}.`);}
+  }
+  else{
+    M.glow='end';const t=canCityT?'city':'settlement';const need=RES.filter(r=>p.res[r]<(COST[t][r]||0)).map(r=>`${(COST[t][r]||0)-p.res[r]} ${RL[r]}`);
+    lines.push(`End your turn. No build or useful trade is available${need.length?`; for a ${t} you still need ${list(need)}`:''}.`);
+  }
+  let left=handCount(p);
+  if(T.best&&(M.glow==='trade'||M.glow==='bank'||String(M.glow).startsWith('build-')))left=handCount(p)-T.best.plan.given+T.best.plan.steps.length-Object.values(sumCost(T.best.items)).reduce((a,b)=>a+b,0);
+  if(left>7)lines.push(`Even after that you'll hold ${left} cards, so a 7 would cost you ${Math.floor(left/2)}. Consider spending more.`);
+  return{M,lines:lines.filter(Boolean)};
+}
+function giveHint(){
+  if(!G||G.current!==0||G.winner!=null)return;
+  const{M,lines}=bestMove();UI.hint=M;coach('hint','Best move',lines.join(' '));render();
+}
+/* ---------- User actions ---------- */
+const myTurnFree=()=>G&&G.phase==='play'&&G.current===0&&G.winner==null&&!UI.busy&&!UI.modal&&!UI.mode;
+async function userRoll(){
+  if(!myTurnFree()||G.rolled)return;UI.busy=true;UI.hint=null;
+  await doRoll(0);UI.busy=false;rule('build');render();
+}
+function warnsSince(cid){return G.coach.filter(m=>m.id>cid&&m.kind==='warn');}
+function restoreSnap(snap){const tb=(G.takebacks||0)+1;G=JSON.parse(snap);G.takebacks=tb;}
+function mistakeCheck(snap,cid,back,cont){
+  if(!ALERTS)return false;const w=warnsSince(cid);if(!w.length)return false;
+  UI.modal={type:'mistake',warns:w,snap,back,cont};render();return true;
+}
+function endTurn(){if(!myTurnFree()||!G.rolled)return;const snap=JSON.stringify(G),cid=G.cid||0;const worthy=gradeWorthy();coachEndTurn();UI.hint=null;
+  const grade=()=>{if(worthy)gradeMove('ending your turn',{kind:'none',base:snap,endNow:true},[{kind:'none',base:snap,label:'building or trading before ending'}]);};
+  if(mistakeCheck(snap,cid,null,()=>{grade();resume('endturn');}))return;grade();resume('endturn');}
+function startBuild(t){
+  if(!myTurnFree()||!G.rolled)return;if(UI.hint){UI.hint.glow=null;UI.hint.label=null;}
+  if(t==='dev'){const p=me();if(!afford(p,COST.dev)||!G.deck.length)return;
+    const snap=JSON.stringify(G),cid=G.cid||0;const alts=buildCands(snap).filter(a=>a.kind!=='dev');
+    const before=afford(p,COST.city)&&G.verts.some(v=>v.owner===0&&!v.city)&&p.cityLeft>0;
+    const c=buyDevCard(p);log(`You buy a development card (${DEVNAME[c]})`);rule('dev');
+    if(before&&!afford(p,COST.city))coach('warn','You spent your city','That card used Ore and Wheat you needed for a city. A city is a sure point; a development card is a gamble.','spentWrong');
+    if(c==='vp')coach('good','Victory Point card','It stays hidden from opponents and already counts toward your 10.');
+    const post=JSON.stringify(G);const grade=()=>gradeMove('buying a development card',{kind:'dev',base:snap},alts);
+    if(mistakeCheck(snap,cid,null,grade))return;grade();checkWin();render();return;}
+  UI.mode=t;render();
+}
+function onVert(i){
+  const v=G.verts[i],p=me();const snap=JSON.stringify(G),cid=G.cid||0;
+  const alts=(UI.mode==='settlement'||UI.mode==='city')?buildCands(snap):[];
+  if(UI.mode==='setup-settle'&&G.current===0&&canSettle(0,v,true)){
+    UI.hint=null;gradeSetup(v,legalSpots(0,true));rateSetup(v);placeSettlement(0,v,G.setupIdx>=NP());log(`You settle on ${describeSpot(v)}`);
+    if(v.port)rule('ports');UI.setupVert=i;UI.mode='setup-road';rule('setupRoad');
+    if(mistakeCheck(snap,cid,()=>{UI.mode='setup-settle';UI.setupVert=null;},null))return;render();return;}
+  if(UI.mode==='settlement'&&canSettle(0,v,false)&&afford(p,COST.settlement)){
+    const spots=legalSpots(0,false);const best=maxBy(spots,x=>spotScore(x,0));
+    pay(p,COST.settlement);placeSettlement(0,v,false);log(`You build a settlement on ${describeSpot(v)}`);UI.mode=null;
+    if(best&&best!==v&&spotScore(v,0)<spotScore(best,0)*0.75){UI.hint={verts:[best.id],edges:[],hexes:[]};coach('warn','Another corner was richer',`You built on ${describeSpot(v)}. The gold-ringed ${describeSpot(best)} was also open.`,'weakSpot');}
+    else coach('good','Settlement built',`+1 VP. This corner adds ${vPips(v)} pips of income.`);
+    if(v.port)rule('ports');
+    {const post=JSON.stringify(G);const grade=()=>gradeMove('settlement',{kind:'settlement',v:v.id,base:snap},alts);
+    if(mistakeCheck(snap,cid,null,grade))return;grade();}checkWin();render();return;}
+  if(UI.mode==='city'&&v.owner===0&&!v.city&&afford(p,COST.city)){
+    pay(p,COST.city);v.city=true;p.cityLeft--;p.settLeft++;log(`You build a city (${vPips(v)} pips)`);UI.mode=null;
+    coach('good','City built',`+1 VP, and this corner now collects double: ${vPips(v)*2} pips instead of ${vPips(v)}.`);
+    gradeMove('city',{kind:'city',v:v.id,base:snap},alts);checkWin();render();}
+}
+function onEdge(i){
+  const e=G.edges[i],p=me();const snap=JSON.stringify(G),cid=G.cid||0;const alts=UI.mode==='road'?buildCands(snap):[];
+  if(UI.mode==='setup-road'&&canRoad(0,e,UI.setupVert)){UI.hint=null;placeRoad(0,e);UI.mode=null;render();resume('setup');return;}
+  if(UI.mode==='road'&&canRoad(0,e)&&afford(p,COST.road)){
+    const could=afford(p,COST.settlement)&&legalSpots(0,false).length>0&&p.settLeft>0;
+    pay(p,COST.road);placeRoad(0,e);log('You build a road');UI.mode=null;updateLR();
+    if(could&&!afford(p,COST.settlement))coach('warn','That road cost you a settlement','You could afford a settlement on an open corner. The road used the Wood and Brick it needed.','spentWrong');
+    const grade=()=>gradeMove('road',{kind:'road',e:e.id,base:snap},alts);
+    if(mistakeCheck(snap,cid,null,grade))return;grade();checkWin();render();return;}
+  if(UI.mode==='free-road'&&canRoad(0,e)){
+    placeRoad(0,e);G.freeRoads--;log('You place a free road');updateLR();
+    if(G.freeRoads<=0||!G.edges.some(x=>canRoad(0,x))||p.roadsLeft<=0){UI.mode=null;G.freeRoads=0;}
+    checkWin();render();}
+}
+function onHex(i){if(UI.mode==='robber'&&i!==G.robber)resume('robber',i);}
+async function userPlayDev(type){
+  if(!myTurnFree())return;const p=me();if(p.playedDev)return;
+  if(!p.dev.some(d=>d.type===type&&d.turn!==G.turn))return;const hintPlenty=UI.hint&&UI.hint.plenty;UI.hint=null;
+  if(type==='knight'){useDev(p,'knight');p.knights++;log('You play a Knight');updateLA(0);UI.busy=true;await robberStep(0);UI.busy=false;checkWin();render();return;}
+  if(type==='road'){useDev(p,'road');log('You play Road Building');G.freeRoads=Math.min(2,p.roadsLeft);UI.mode='free-road';
+    if(!G.edges.some(e=>canRoad(0,e))||!G.freeRoads){UI.mode=null;G.freeRoads=0;}render();return;}
+  if(type==='plenty'){UI.modal={type:'plenty',sel:hintPlenty?{...hintPlenty}:{}};render();return;}
+  if(type==='mono'){UI.modal={type:'mono'};render();}
+}
+
+/* ---------- Rendering ---------- */
+function render(){if(!G||typeof document==='undefined')return;saveGame();scheduleWP();renderStatus();renderBoard();renderTalk();renderOpp();renderPlayers();renderHand();renderTabs();renderModal();}
+function dieHtml(n){
+  const pos={1:[5],2:[1,9],3:[1,5,9],4:[1,3,7,9],5:[1,3,5,7,9],6:[1,3,4,6,7,9]}[n]||[];
+  let s='';for(let k=1;k<=9;k++){const r=Math.ceil(k/3),c=(k-1)%3+1;s+=pos.includes(k)?`<i style="grid-row:${r};grid-column:${c}"></i>`:'';}
+  return `<div class="die${n?'':' blank'}" aria-hidden="true">${s}</div>`;
+}
+function renderStatus(){
+  const p=G.players[G.current];let msg='',btns='';
+  const g=k=>UI.hint&&UI.hint.glow===k?' glow':'';
+  const hint='<button class="btn hint" data-act="hint" type="button">Best move</button>';
+  if(G.winner!=null){msg=G.winner===0?`You win with ${vp(0)} VP!`:`${nm(G.winner)} wins with ${vp(G.winner)} VP`;btns='<button class="btn primary" data-act="review" type="button">Game review</button><button class="btn" data-act="new" type="button">New game</button>';}
+  else if(G.phase==='setup'){
+    if(p.bot)msg=`${p.name} is choosing a starting spot…`;
+    else{msg=UI.mode==='setup-road'?'Place a road touching your new settlement':(G.setupIdx<4?'Place your first settlement on a glowing corner':'Place your second settlement. It pays out straight away');btns=hint;}
+  }
+  else if(p.bot)msg=`${p.name}’s turn…`;
+  else if(UI.mode==='robber'){msg='Move the robber: click a glowing hex';btns=hint;}
+  else if(UI.mode==='road'||UI.mode==='settlement'||UI.mode==='city'){msg={road:'Click a glowing edge to build a road',settlement:'Click a glowing corner to build a settlement',city:'Click one of your settlements to upgrade it'}[UI.mode];btns='<button class="btn" data-act="cancel" type="button">Cancel</button>';}
+  else if(UI.mode==='free-road'){msg=`Place a free road (${G.freeRoads} left)`;btns='<button class="btn" data-act="cancel" type="button">Stop</button>';}
+  else if(UI.busy||UI.modal)msg='Resolve the 7…';
+  else if(!G.rolled){msg='Your turn. Roll the dice to start';btns=`<button class="btn primary${g('roll')}" data-act="roll" type="button">Roll dice</button>`+hint;}
+  else{msg='Trade and build, then end your turn';btns=`<button class="btn primary${g('end')}" data-act="end" type="button">End turn</button>`+hint;}
+  const d=G.dice||[0,0];
+  $('#status').innerHTML=`<div class="dice">${dieHtml(d[0])}${dieHtml(d[1])}</div>
+    <div class="smsg"><div class="turnno">${G.phase==='setup'?'Setup':'Round '+Math.ceil(G.turn/NP())}${G.dice?' · rolled '+(d[0]+d[1]):''}${UI.savedAt&&G.winner==null?' · game saved':''}${UI.lastGrade?` · last move <span class="gpill ${UI.lastGrade.cls}">${UI.lastGrade.label}</span>`:''}</div><div class="stext">${msg}</div></div>
+    <div class="sbtns">${btns}</div>`;
+}
+const TEX=(()=>{
+  const pat=(id,w,h,body)=>`<pattern id="tx-${id}" patternUnits="userSpaceOnUse" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${TCOL[id]}"/>${body}</pattern>`;
+  const tree=(x,y,c1,c2)=>`<rect x="${x-0.9}" y="${y+3}" width="1.8" height="3" fill="#3b2a17"/><path d="M${x},${y-7} L${x+5},${y+1} L${x+2.5},${y+1} L${x+6},${y+5} L${x-6},${y+5} L${x-2.5},${y+1} L${x-5},${y+1} Z" fill="${c1}"/><path d="M${x},${y-7} L${x+5},${y+1} L${x+2.5},${y+1} L${x+6},${y+5} L${x},${y+5} Z" fill="${c2}"/>`;
+  const forest=pat('wood',28,26,tree(7,8,'#2c5536','#244a2e')+tree(21,21,'#305c3a','#264d30')+tree(21,-5,'#305c3a','#264d30')+tree(-7,21,'#305c3a','#264d30')+tree(35,8,'#2c5536','#244a2e')+'<circle cx="14" cy="15" r="1" fill="#5d8a5f"/><circle cx="2" cy="2" r="1" fill="#5d8a5f"/>');
+  const hills=pat('brick',24,16,'<g stroke="#8d4528" stroke-width="1.3" fill="none"><path d="M0,0.6 H24 M0,8.6 H24"/><path d="M0.6,0 V8 M12.6,0 V8 M6.6,8 V16 M18.6,8 V16"/></g><rect x="2" y="2" width="8" height="2" fill="#c97553" opacity=".7"/><rect x="8" y="10" width="8" height="2" fill="#c97553" opacity=".5"/>');
+  const tuft=(x,y,c)=>`<path d="M${x-2.5},${y} Q${x-2},${y-3} ${x-3.5},${y-5} M${x},${y} Q${x},${y-4} ${x+0.5},${y-6.5} M${x+2.5},${y} Q${x+2.5},${y-3} ${x+4},${y-5}" stroke="${c}" stroke-width="1.1" fill="none" stroke-linecap="round"/>`;
+  const sheepIcon=(x,y)=>`<ellipse cx="${x}" cy="${y}" rx="3.6" ry="2.6" fill="#f6f4ea"/><circle cx="${x+3.6}" cy="${y-0.6}" r="1.3" fill="#2d2d2d"/><path d="M${x-1.8},${y+2.3} v1.6 M${x+1.6},${y+2.3} v1.6" stroke="#2d2d2d" stroke-width=".8"/>`;
+  const pasture=pat('sheep',34,30,tuft(6,9,'#6e9a45')+tuft(23,6,'#7aa64f')+tuft(14,22,'#6e9a45')+tuft(30,26,'#7aa64f')+sheepIcon(25,18)+'<circle cx="4" cy="24" r="1" fill="#f1e889"/><circle cx="15" cy="4" r=".9" fill="#ffffff"/>');
+  const stalk=(x,y)=>`<path d="M${x},${y+9} V${y-2}" stroke="#a37a1f" stroke-width="1"/>`+[0,3,6].map(d=>`<ellipse cx="${x-1.3}" cy="${y+d}" rx="1.1" ry="2" transform="rotate(-25 ${x-1.3} ${y+d})" fill="#c3901f"/><ellipse cx="${x+1.3}" cy="${y+d+1.4}" rx="1.1" ry="2" transform="rotate(25 ${x+1.3} ${y+d+1.4})" fill="#d5a42c"/>`).join('');
+  const fields=pat('wheat',16,22,stalk(4,4)+stalk(12,15)+stalk(12,-7)+'<path d="M0,21.5 H16" stroke="#c99a2e" stroke-width=".7" opacity=".6"/>');
+  const mountains=pat('ore',36,30,'<path d="M0,22 L8,9 L13,15 L19,5 L28,19 L36,12 V30 H0 Z" fill="#767d86"/><path d="M19,5 L28,19 L22,19 Z M8,9 L13,15 L9,15 Z" fill="#5f656d"/><path d="M19,5 L21.5,9 L19.5,8.5 L17.6,8 Z" fill="#e9ecef"/><path d="M8,9 L9.6,11.6 L7,11.2 Z" fill="#e9ecef"/><g fill="#a2a8b0" stroke="#5f656d" stroke-width=".6"><path d="M4,26 l3,-2 l3,1 l-1,3 l-4,0 Z"/><path d="M24,25 l4,-1.5 l2,2 l-2,2.5 l-3.5,-0.5 Z"/></g>');
+  const desert=pat('desert',44,20,'<path d="M0,6 Q11,1 22,6 T44,6 M-11,15 Q0,10 11,15 T33,15 T55,15" stroke="#bfa86f" stroke-width="1.2" fill="none"/><circle cx="8" cy="11" r=".8" fill="#a8925c"/><circle cx="33" cy="2" r=".7" fill="#a8925c"/><circle cx="27" cy="18" r=".8" fill="#a8925c"/>');
+  return `<defs>${forest}${hills}${pasture}${fields}${mountains}${desert}<radialGradient id="hexShade" cx="50%" cy="42%" r="62%"><stop offset="60%" stop-color="#000" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity=".22"/></radialGradient></defs>`;
+})();
+function renderBoard(){
+  const H=UI.hint||{verts:[],edges:[],hexes:[]};const P=n=>n.toFixed(1);let s=TEX;
+  s+=`<polygon class="sea" points="${G.seaPoly}"/>`;
+  G.ports.forEach(pt=>{
+    pt.v.forEach(vi=>{const v=G.verts[vi];s+=`<line class="pier" x1="${P(pt.x)}" y1="${P(pt.y)}" x2="${P(v.x)}" y2="${P(v.y)}"/>`;});
+    const c=pt.type==='any'?'#3a3a3a':TCOL[pt.type];
+    s+=`<circle cx="${P(pt.x)}" cy="${P(pt.y)}" r="17" fill="#f4eee0" stroke="${c}" stroke-width="3.5"/>`;
+    s+=`<text class="pt" x="${P(pt.x)}" y="${P(pt.y)}">${pt.type==='any'?'3:1':'2:1'}</text>`;
+    s+=`<text class="pt2" x="${P(pt.x)}" y="${P(pt.y+9)}">${pt.type==='any'?'any':RL[pt.type]}</text>`;
+  });
+  G.hexes.forEach(h=>{
+    const pts=h.verts.map(vi=>{const v=G.verts[vi];return P(h.x+(v.x-h.x)*0.965)+','+P(h.y+(v.y-h.y)*0.965);}).join(' ');
+    s+=`<polygon class="hex" points="${pts}" fill="url(#tx-${h.res})"/><polygon points="${pts}" fill="url(#hexShade)" pointer-events="none"/>`;
+    s+=`<text class="tl" x="${P(h.x)}" y="${P(h.y-31)}" fill="${TTXT[h.res]}" stroke="${TCOL[h.res]}">${TERR[h.res]}</text>`;
+    if(h.num){const red=h.num===6||h.num===8?' red':'';
+      s+=`<circle class="tok" cx="${P(h.x)}" cy="${P(h.y+2)}" r="17"/><text class="tn${red}" x="${P(h.x)}" y="${P(h.y+5)}">${h.num}</text>`;
+      const k=PIPS[h.num];for(let j=0;j<k;j++)s+=`<circle class="pdot${red}" cx="${P(h.x+(j-(k-1)/2)*4)}" cy="${P(h.y+12)}" r="1.5"/>`;}
+  });
+  if(UI.mode==='robber')G.hexes.forEach(h=>{if(h.id===G.robber)return;
+    const pts=h.verts.map(vi=>{const v=G.verts[vi];return P(h.x+(v.x-h.x)*0.9)+','+P(h.y+(v.y-h.y)*0.9);}).join(' ');
+    s+=`<polygon class="hspot" data-h="${h.id}" points="${pts}"><title>${TERR[h.res]} ${h.num||''}</title></polygon>`;});
+  H.hexes.forEach(id=>{const h=G.hexes[id];const pts=h.verts.map(vi=>{const v=G.verts[vi];return P(h.x+(v.x-h.x)*0.86)+','+P(h.y+(v.y-h.y)*0.86);}).join(' ');s+=`<polygon class="hint" points="${pts}" pointer-events="none"/>`;});
+  H.edges.forEach(id=>{const e=G.edges[id];const[a,b]=e.v.map(x=>G.verts[x]);s+=`<line class="hintE" x1="${P(a.x)}" y1="${P(a.y)}" x2="${P(b.x)}" y2="${P(b.y)}"/>`;});
+  G.edges.forEach(e=>{if(e.owner==null)return;const[a,b]=e.v.map(x=>G.verts[x]);const t=0.15;
+    const x1=a.x+(b.x-a.x)*t,y1=a.y+(b.y-a.y)*t,x2=b.x-(b.x-a.x)*t,y2=b.y-(b.y-a.y)*t;
+    s+=`<line class="road-o" x1="${P(x1)}" y1="${P(y1)}" x2="${P(x2)}" y2="${P(y2)}"/><line class="road" stroke="${G.players[e.owner].color}" x1="${P(x1)}" y1="${P(y1)}" x2="${P(x2)}" y2="${P(y2)}"/>`;});
+  let le=[];
+  if(UI.mode==='setup-road'&&G.current===0)le=G.edges.filter(e=>canRoad(0,e,UI.setupVert));
+  if(UI.mode==='road'||UI.mode==='free-road')le=G.edges.filter(e=>canRoad(0,e));
+  le.forEach(e=>{const[a,b]=e.v.map(x=>G.verts[x]);const t=0.17;const x1=a.x+(b.x-a.x)*t,y1=a.y+(b.y-a.y)*t,x2=b.x-(b.x-a.x)*t,y2=b.y-(b.y-a.y)*t;
+    s+=`<line class="ehit" data-e="${e.id}" x1="${P(x1)}" y1="${P(y1)}" x2="${P(x2)}" y2="${P(y2)}"/><line class="espot" x1="${P(x1)}" y1="${P(y1)}" x2="${P(x2)}" y2="${P(y2)}"/>`;});
+  G.verts.forEach(v=>{if(v.owner==null)return;const c=G.players[v.owner].color;
+    const d=v.city?'M-13,8 L13,8 L13,-3 L3,-3 L3,-9 L-4,-15 L-13,-9 Z':'M-8,7 L8,7 L8,-2 L0,-10 L-8,-2 Z';
+    s+=`<path d="${d}" transform="translate(${P(v.x)},${P(v.y)})" fill="${c}" stroke="#141414" stroke-width="1.7" stroke-linejoin="round"/>`;});
+  H.verts.forEach(id=>{const v=G.verts[id];s+=`<circle class="hint" cx="${P(v.x)}" cy="${P(v.y)}" r="15" pointer-events="none"/>`;});
+  if(H.label){const w=H.label.text.length*6.3+16;const lx=Math.max(-300,Math.min(300,H.label.x));s+=`<g class="callout" pointer-events="none" transform="translate(${P(lx)},${P(H.label.y)})"><rect x="${P(-w/2)}" y="-11" width="${P(w)}" height="20" rx="10"/><text y="3.5">${H.label.text}</text></g>`;}
+  let lv=[];
+  if(UI.mode==='setup-settle'&&G.current===0)lv=legalSpots(0,true);
+  if(UI.mode==='settlement')lv=legalSpots(0,false);
+  lv.forEach(v=>{s+=`<circle class="spot" data-v="${v.id}" cx="${P(v.x)}" cy="${P(v.y)}" r="8"><title>${describeSpot(v)}</title></circle>`;});
+  if(UI.mode==='city')G.verts.forEach(v=>{if(v.owner===0&&!v.city)s+=`<circle class="ring" data-v="${v.id}" cx="${P(v.x)}" cy="${P(v.y)}" r="17"><title>Upgrade: ${describeSpot(v)}</title></circle>`;});
+  const rh=G.hexes[G.robber];const rx=rh.num?rh.x-27:rh.x,ry=rh.num?rh.y+6:rh.y+4;
+  s+=`<g transform="translate(${P(rx)},${P(ry)})" pointer-events="none"><ellipse cy="10" rx="9" ry="3" fill="#000" opacity=".3"/><path d="M-7,10 C-8,1 -6,-2 -3.5,-4.5 A6,6 0 1 1 3.5,-4.5 C6,-2 8,1 7,10 Z" fill="#26292c" stroke="#f2f2f2" stroke-width="1.5"/></g>`;
+  const b=$('#board');b.setAttribute('viewBox',G.vb);b.innerHTML=s;
+}
+function oppRead(o){
+  const pp=prodPips(o.i);const tot=RES.reduce((s,r)=>s+pp[r],0)||0;const ow=pp.ore+pp.wheat,wb=pp.wood+pp.brick;
+  const mine=G.verts.filter(v=>v.owner===o.i);const sets=mine.filter(v=>!v.city).length,cities=mine.filter(v=>v.city).length;
+  const ports=[...new Set(mine.filter(v=>v.port).map(v=>v.port))];const dev=o.dev.length,vis=vp(o.i,true);
+  const share=x=>tot?x/tot:0;
+  // plan archetype
+  let plan;const port2=ports.find(r=>r!=='any'&&pp[r]>=6);
+  if(!tot)plan={name:'Setting up',desc:'No settlements yet.'};
+  else if(port2)plan={name:`${RL[port2]} trader`,desc:`Strong ${RL[port2]} income plus its 2:1 harbour: they turn ${RL[port2]} into whatever they lack.`};
+  else if(ow>=wb*1.4)plan=(o.knights+dev>=3)?{name:'Developer',desc:'Ore, wheat and sheep into development cards: knights for Largest Army and hidden points.'}:{name:'Commander',desc:'Ore and wheat first: cities to double income, then cards or the army.'};
+  else if(wb>=ow*1.4)plan={name:'Explorer',desc:'Wood and brick: roads and new settlements, chasing Longest Road.'};
+  else plan={name:'Producer',desc:'Balanced income: expand, upgrade, and grab a bonus card late.'};
+  // paths
+  const hr=G.lr!=null&&G.lr!==o.i?G.players[G.lr].road:0,roadT=Math.max(5,hr+1);
+  const ha=G.la!=null&&G.la!==o.i?G.players[G.la].knights:0,armyT=Math.max(3,ha+1);
+  const reach=legalSpots(o.i,false).length+G.verts.filter(v=>spotFree(v)&&!canSettle(o.i,v,false)&&v.adj.some(a=>G.verts[a].edges.some(e=>G.edges[e].owner===o.i))).length;
+  const paths=[
+    {k:'road',label:'Longest Road',prog:G.lr===o.i?1:Math.min(1,o.road/roadT),have:G.lr===o.i,
+      detail:G.lr===o.i?`Holds it (${o.road})`:`${o.road} / ${roadT}`,
+      need:G.lr===o.i?`Holding it at ${o.road}. Breaking their road or building past it takes the 2 VP away.`:`${roadT-o.road} more road segments (Wood + Brick each).`,
+      w:(G.lr===o.i?0.5:0)+Math.pow(Math.min(1,o.road/roadT),2)*0.7+share(wb)*0.5},
+    {k:'army',label:'Largest Army',prog:G.la===o.i?1:Math.min(1,o.knights/armyT),have:G.la===o.i,
+      detail:G.la===o.i?`Holds it (${o.knights})`:`${o.knights} / ${armyT} knights`,
+      need:G.la===o.i?`Holding it with ${o.knights} knights. You need ${o.knights+1} to take it.`:`${armyT-o.knights} more knight${armyT-o.knights===1?'':'s'}. They hold ${dev} unplayed card${dev===1?'':'s'}; each new one costs Sheep + Wheat + Ore.`,
+      w:(G.la===o.i?0.5:0)+Math.min(1,o.knights/armyT)*0.6+Math.min(dev,4)*0.08+share(ow+pp.sheep)*0.35},
+    {k:'cities',label:'Cities',prog:cities+sets?cities/(cities+sets):0,detail:`${cities} built · ${sets} to upgrade`,
+      need:`2 Wheat + 3 Ore per city.${pp.ore===0?' They produce no Ore, so every city depends on trades.':pp.wheat===0?' They produce no Wheat, so every city depends on trades.':''}`,
+      w:o.cityLeft&&sets?share(ow)*1.05+(cities/(cities+sets||1))*0.3:0},
+    {k:'expand',label:'Expansion',prog:Math.min(1,(5-o.settLeft+o.cityLeft*0)/5),detail:`${reach} open corner${reach===1?'':'s'} in reach`,
+      need:`Wood + Brick + Sheep + Wheat per settlement${reach?'':', and roads first: no open corner in reach'}.`,
+      w:o.settLeft?share(wb)*0.7+Math.min(reach,3)*0.08:0}
+  ];
+  const main=tot?maxBy(paths,x=>x.w):null;
+  // threat
+  const hidden=dev*0.2;const est=vis+hidden;const threat=est+tot/18;
+  // how to slow
+  const hexes=G.hexes.filter(h=>h.res!=='desert'&&h.id!==G.robber&&h.verts.some(v=>G.verts[v].owner===o.i)&&!h.verts.some(v=>G.verts[v].owner===0));
+  const bh=maxBy(hexes,h=>h.verts.reduce((s,v)=>s+(G.verts[v].owner===o.i?(G.verts[v].city?2:1):0),0)*PIPS[h.num]);
+  const keyRes={road:['wood','brick'],army:['sheep','wheat','ore'],cities:['ore','wheat'],expand:['wood','brick','sheep','wheat']}[main?main.k:'expand'];
+  const refuse=minBy(keyRes,r=>pp[r]);
+  return{pp,tot,plan,paths,main,vis,dev,est,threat,bh,refuse,ports};
+}
+function renderOpp(){
+  const el=$('#opp');if(!el)return;
+  const bots=G.players.filter(o=>o.bot).map(o=>({o,r:oppRead(o)}));
+  const top=G.phase==='play'?maxBy(bots,b=>b.r.threat):null;
+  el.innerHTML=bots.map(({o,r})=>{
+    const wp=WP.val?WP.val[o.i]:null;
+    const isTop=WP.val?(maxBy(bots,b=>WP.val[b.o.i]).o===o&&wp>=0.3):(top&&top.o===o&&r.vis>=3);
+    const lvl=r.est>=8?'Close to winning':r.est>=6?'Rising':'Building';
+    const maxP=Math.max(12,...RES.map(x=>r.pp[x]));
+    const prod=RES.map(x=>`<div title="${RL[x]}: ${r.pp[x]} pips"><b style="height:${(r.pp[x]/maxP*100).toFixed(0)}%;background:${TCOL[x]}"></b>${RL[x].slice(0,2)}</div>`).join('');
+    const others=r.paths.filter(x=>x!==r.main).map(x=>`<div class="orow"><span>${x.label}</span><span class="bar"><i style="width:${(x.prog*100).toFixed(0)}%;background:var(--muted)"></i></span><span>${x.detail}</span></div>`).join('');
+    const main=r.main?`<div class="omain"><div class="lab"><span>Going for</span><span>${r.main.have?'held':Math.round(r.main.prog*100)+'%'}</span></div>
+      <div class="big">${r.main.label} · ${r.main.detail}</div><div class="bar"><i style="width:${(r.main.prog*100).toFixed(0)}%;background:${o.color==='#f1eee4'?'#8a8676':o.color}"></i></div>
+      <div class="need"><b>Needs:</b> ${r.main.need}</div></div>`:'';
+    const slow=r.tot?`<div class="oslow"><b>To slow them:</b> ${r.bh?`robber on ${TERR[r.bh.res]} (${r.bh.num})`:'no clean robber hex (you share their tiles)'}${r.refuse?`, and don’t trade them ${RL[r.refuse]}`:''}.</div>`:'';
+    return `<article class="ocard${isTop?' top':''}">
+      <div class="ohead"><span class="pdot" style="background:${o.color}"></span><span class="pname">${o.name}</span>${isTop?'<span class="pill threat">Biggest threat</span>':`<span class="pill lvl">${lvl}</span>`}</div>
+      <div class="owp" title="Share of simulated games from this position that ${o.name} wins"><span class="owp-n">${G.phase!=='play'?'–':wp!=null?Math.round(wp*100)+'%':'…'}</span><span class="small muted">win chance</span><span class="bar"><i style="width:${wp!=null?Math.round(wp*100):0}%;background:${o.color==='#f1eee4'?'#8a8676':o.color}"></i></span></div>
+      <div><div class="oplan">${r.plan.name}</div><div class="odesc">${r.plan.desc}</div></div>
+      <div class="small" style="font-variant-numeric:tabular-nums"><b>${r.vis}</b> VP showing${r.dev?` · ${r.dev} hidden card${r.dev===1?'':'s'} (≈${r.est.toFixed(1)} likely)`:''} · ${10-r.vis} to go</div>
+      ${main}
+      <div class="orows">${others}</div>
+      <div><div class="small muted" style="margin-bottom:3px">Income (pips per resource)</div><div class="oprod">${prod}</div></div>
+      <div class="small"><b>Table read:</b> ${tableRead(o.i)}</div>
+      ${slow}
+    </article>`;}).join('');
+}
+function renderPlayers(){
+  $('#players').innerHTML=(G.order||[0,1,2,3]).map(i=>G.players[i]).map(p=>{
+    const cur=G.current===p.i&&G.winner==null;const isMe=p.i===0;
+    const v=isMe?vp(0):vp(p.i,true);
+    const devs=isMe?'':` · ${p.dev.length} dev`;
+    const badges=[G.lr===p.i?'<span class="badge">Longest Road</span>':'',G.la===p.i?'<span class="badge">Largest Army</span>':''].join('');
+    return `<div class="pcard${cur?' cur':''}"><span class="pdot" style="background:${p.color}"></span><span class="pname">${p.name} <span class="seatno">${SEAT_NAMES[(G.order||[0,1,2,3]).indexOf(p.i)]}</span></span><span class="pvp"><b>${v}</b> VP${isMe?'':''}</span>
+      <span class="pstats">${handCount(p)} cards${devs} · knights ${p.knights} · road ${p.road}${WP.val&&G.phase==='play'&&G.winner==null?` · <b>${Math.round(WP.val[p.i]*100)}%</b> to win`:''}</span>${badges?`<span class="badges">${badges}</span>`:''}</div>`;
+  }).join('');
+}
+function renderHand(){
+  const p=me();const n=handCount(p);const free=myTurnFree()&&G.rolled;const gl=k=>UI.hint&&UI.hint.glow===k?' glow':'';
+  const sets=G.verts.some(v=>v.owner===0&&!v.city);
+  const reason=(t)=>{
+    if(G.phase!=='play')return 'after setup';if(G.current!==0)return 'not your turn';if(!G.rolled)return 'roll first';
+    if(!afford(p,COST[t]))return 'missing cards';
+    if(t==='road'){if(p.roadsLeft<=0)return 'no roads left';if(!G.edges.some(e=>canRoad(0,e)))return 'nowhere to build';}
+    if(t==='settlement'){if(p.settLeft<=0)return 'none left';if(!legalSpots(0,false).length)return 'no open corner on your roads';}
+    if(t==='city'){if(p.cityLeft<=0)return 'none left';if(!sets)return 'no settlement to upgrade';}
+    if(t==='dev'&&!G.deck.length)return 'deck is empty';
+    return '';
+  };
+  const act=(t,label,vpTxt)=>{const r=reason(t);const on=free&&!r;
+    return `<button class="btn act${gl('build-'+t)}" data-build="${t}" type="button" ${on?'':'disabled'}><span class="lbl"><span>${label}</span><span class="why">${on?vpTxt:r}</span></span>${costChips(COST[t])}</button>`;};
+  const tr=free?'':'disabled';
+  let devs='';
+  if(p.dev.length){
+    devs='<div class="devs">'+p.dev.map(d=>{
+      const can=d.type!=='vp'&&G.phase==='play'&&G.current===0&&!UI.busy&&!UI.modal&&!UI.mode&&!p.playedDev&&d.turn!==G.turn&&G.winner==null;
+      const note=d.type==='vp'?'counts automatically':d.turn===G.turn?'playable next turn':p.playedDev?'one card per turn':'';
+      return `<div class="dev"><div><b>${DEVNAME[d.type]}</b><span>${DEVDESC[d.type]}</span></div>${d.type==='vp'?`<span class="small muted">${note}</span>`:`<button class="btn${gl('dev-'+d.type)}" data-dev="${d.type}" type="button" ${can?'':'disabled'} title="${note}">Play</button>`}</div>`;}).join('')+'</div>';
+  }
+  $('#hand').innerHTML=`<div class="ph"><h2>Your hand</h2><span class="count${n>7?' over':''}">${n} card${n===1?'':'s'}${n>7?' · over 7':''}</span></div>
+    <div class="reslist">${RES.map(r=>`<div class="res"><span class="sw" style="background:${TCOL[r]}"></span><b>${p.res[r]}</b><small>${RL[r]} · ${ratio(0,r)}:1</small></div>`).join('')}</div>
+    <div class="acts">${act('road','Road','')}${act('settlement','Settlement','+1 VP')}${act('city','City','+1 VP')}${act('dev','Dev card','draw')}
+    <button class="btn${gl('bank')}" data-act="bank" type="button" ${tr}>Bank trade</button><button class="btn${gl('trade')}" data-act="trade" type="button" ${tr}>Offer trade</button></div>
+    ${devs}
+    <div class="pieces">Pieces left: ${p.roadsLeft} roads · ${p.settLeft} settlements · ${p.cityLeft} cities · Deck: ${G.deck.length} cards</div>`;
+}
+function renderTabs(){
+  document.querySelectorAll('.tab').forEach(t=>{const on=t.dataset.tab===UI.tab;t.classList.toggle('on',on);t.setAttribute('aria-selected',on);
+    t.innerHTML={coach:'Coach',ask:'Ask Claude',rules:'Rules',log:'Log &amp; dice'}[t.dataset.tab]+(t.dataset.tab==='coach'&&UI.unread&&!on?'<span class="dot"></span>':'');});
+  const body=$('#tabbody');
+  if(UI.tab==='ask'){if(body.dataset.tab!=='ask'){body.innerHTML=askShell();body.dataset.tab='ask';}renderAsk();return;}
+  body.dataset.tab=UI.tab;
+  if(UI.tab==='coach'){UI.unread=false;
+    body.innerHTML='<div class="feed">'+G.coach.map(m=>`<div class="msg ${m.kind}${m.grade?' '+m.grade:''}"><span class="t">${m.t?'T'+m.t:'setup'}</span><span class="tag">${{rule:'Rule',tip:'Tip',warn:'Watch out',good:'Nice',hint:'Hint',grade:'Move grade'}[m.kind]}</span><h3>${m.title}</h3><p>${m.text}</p></div>`).join('')+'</div>';}
+  else if(UI.tab==='rules')body.innerHTML=RULES_HTML;
+  else{const tot=G.rollHist.reduce((a,b)=>a+b,0);const mx=Math.max(1,...G.rollHist.slice(2),tot*6/36);
+    let bars='',xs='';for(let n=2;n<=12;n++){const exp=tot*(PIPS[n]||6)/36;
+      bars+=`<div class="col" title="${n}: ${G.rollHist[n]} rolled, ${exp.toFixed(1)} expected"><div class="bar" style="height:${G.rollHist[n]/mx*100}%"></div><div class="exp" style="bottom:${exp/mx*100}%"></div></div>`;xs+=`<span>${n}</span>`;}
+    body.innerHTML=`<div class="small muted">Dice so far (${tot} rolls). Bars are actual counts, dashes are what the odds predict.</div><div class="hist">${bars}</div><div class="histx">${xs}</div>
+      <div class="sec">Game log</div><div class="loglist">${G.log.map(l=>`<div><span class="lt">${l.t?'T'+l.t:'S'}</span>${l.text}</div>`).join('')}</div>`;}
+}
+function stepper(kind,r,val,sub,canUp,canDown){
+  return `<div class="stp"><span class="sw" style="background:${TCOL[r]}"></span><b>${val}</b><small>${sub}</small><div class="row"><button type="button" data-m="${kind}" data-r="${r}" data-d="-1" ${canDown?'':'disabled'} aria-label="Less ${RL[r]}">−</button><button type="button" data-m="${kind}" data-r="${r}" data-d="1" ${canUp?'':'disabled'} aria-label="More ${RL[r]}">+</button></div></div>`;
+}
+function renderModal(){
+  const m=UI.modal;const box=$('#modal');if(!m){box.innerHTML='';return;}
+  const p=me();let h='';
+  if(m.type==='discard'){const sum=RES.reduce((s,r)=>s+(m.sel[r]||0),0);
+    h=`<h2>Discard ${m.need} cards</h2><p>A 7 was rolled and you hold ${handCount(p)} cards. Choose ${m.need} to return to the bank. Keep the cards for your next build.</p>
+    <div class="steppers">${RES.map(r=>stepper('dsc',r,m.sel[r]||0,`of ${p.res[r]} ${RL[r]}`,(m.sel[r]||0)<p.res[r]&&sum<m.need,(m.sel[r]||0)>0)).join('')}</div>
+    <div class="drow"><span class="muted small" style="margin-right:auto">${sum} of ${m.need} chosen</span><button class="btn primary" data-m="dsc-ok" type="button" ${sum===m.need?'':'disabled'}>Discard</button></div>`;}
+  else if(m.type==='steal'){h=`<h2>Steal from whom?</h2><p>Several players have buildings on that hex. Pick one; you take a random card.</p><div class="drow" style="justify-content:flex-start">${m.vs.map(v=>`<button class="btn" data-m="steal" data-p="${v}" type="button">${nm(v)} (${handCount(G.players[v])} cards, ${vp(v,true)} VP)</button>`).join('')}</div>`;}
+  else if(m.type==='plenty'){const sum=RES.reduce((s,r)=>s+(m.sel[r]||0),0);
+    h=`<h2>Year of Plenty</h2><p>Take any 2 cards from the bank.</p><div class="steppers">${RES.map(r=>stepper('pl',r,m.sel[r]||0,`bank ${G.bank[r]}`,sum<2&&(m.sel[r]||0)<G.bank[r],(m.sel[r]||0)>0)).join('')}</div>
+    <div class="drow"><button class="btn" data-m="close" type="button">Cancel</button><button class="btn primary" data-m="pl-ok" type="button" ${sum===2?'':'disabled'}>Take cards</button></div>`;}
+  else if(m.type==='mono'){h=`<h2>Monopoly</h2><p>Name a resource. Every opponent gives you all they hold of it. Think about what others have been collecting recently.</p>
+    <div class="steppers">${RES.map(r=>`<button type="button" class="stp pick" data-m="mono" data-r="${r}"><span class="sw" style="background:${TCOL[r]}"></span><b>${RL[r]}</b></button>`).join('')}</div><div class="drow"><button class="btn" data-m="close" type="button">Cancel</button></div>`;}
+  else if(m.type==='bank'){
+    h=`<h2>Trade with the bank</h2><p>Pick what to give and what to receive. Your best rate is applied automatically: 4:1 normally, 3:1 or 2:1 if you own a harbour.</p>
+    <div class="sec">Give</div><div class="steppers">${RES.map(r=>{const n=ratio(0,r);const ok=p.res[r]>=n;return `<button type="button" class="stp pick${m.give===r?' sel':''}" data-m="bg" data-r="${r}" ${ok?'':'disabled'}><span class="sw" style="background:${TCOL[r]}"></span><b>${n}</b><small>${RL[r]} (have ${p.res[r]})</small></button>`;}).join('')}</div>
+    <div class="sec">Receive</div><div class="steppers">${RES.map(r=>{const ok=G.bank[r]>0&&r!==m.give;return `<button type="button" class="stp pick${m.get===r?' sel':''}" data-m="bt" data-r="${r}" ${ok?'':'disabled'}><span class="sw" style="background:${TCOL[r]}"></span><b>1</b><small>${RL[r]}</small></button>`;}).join('')}</div>
+    <div class="drow"><button class="btn" data-m="close" type="button">Close</button><button class="btn primary" data-m="b-ok" type="button" ${m.give&&m.get&&m.give!==m.get?'':'disabled'}>Trade</button></div>`;}
+  else if(m.type==='trade'){
+    const gs=RES.reduce((s,r)=>s+(m.give[r]||0),0),ws=RES.reduce((s,r)=>s+(m.get[r]||0),0);
+    h=`<h2>Offer a trade</h2><p>Set what you give and what you want, then ask the table. Bots accept deals that help their next build and refuse a player near 10 VP.</p>
+    <div class="sec">You give</div><div class="steppers">${RES.map(r=>stepper('tg',r,m.give[r]||0,`have ${p.res[r]}`,(m.give[r]||0)<p.res[r]&&!(m.get[r]),(m.give[r]||0)>0)).join('')}</div>
+    <div class="sec">You want</div><div class="steppers">${RES.map(r=>stepper('tw',r,m.get[r]||0,RL[r],(m.get[r]||0)<4&&!(m.give[r]),(m.get[r]||0)>0)).join('')}</div>
+    ${(()=>{const asked=gs&&ws&&askCache()[offerKey(m)];return asked&&!m.resp?'<p class="small muted">You already offered exactly this deal this turn. Change it to get a fresh answer.</p>':'';})()}
+    <div class="drow"><button class="btn" data-m="close" type="button">Close</button><button class="btn primary" data-m="t-ask" type="button" ${gs&&ws&&!(m.resp&&askCache()[offerKey(m)])?'':'disabled'}>${askCache()[offerKey(m)]&&gs&&ws?'Show their answers':'Ask the table'}</button></div>
+    ${m.resp&&m.repeat?'<p class="small muted">Same offer, same answers. The table won’t reconsider until you change the deal or a new turn starts.</p>':''}
+    ${m.resp?'<div class="sec">Responses</div>'+m.resp.map(x=>`<div class="resp"><span><b>${nm(x.i)}</b> <span class="muted">${x.why}${m.rec===x.i&&x.ok?' · recommended':''}${x.ok&&vp(x.i,true)>=7?' · leader, think twice':''}</span></span>${x.ok?`<button class="btn primary" data-m="t-do" data-p="${x.i}" type="button">Trade with ${nm(x.i)}</button>`:x.counter&&RES.every(q=>p.res[q]>=(x.counter.recv[q]||0))?`<button class="btn" data-m="t-ctr" data-p="${x.i}" type="button">Take counter</button>`:''}</div>`).join(''):''}`;}
+  else if(m.type==='over')h=reviewHtml();
+  else if(m.type==='newgame'){
+    const n=m.ng;const seg=(f,opts)=>`<div class="seg" role="group">${opts.map(([v,l,d])=>`<button type="button" class="${n[f]===v?'on':''}" data-m="ng" data-f="${f}" data-v="${v}" aria-pressed="${n[f]===v}"><b>${l}</b>${d?`<span>${d}</span>`:''}</button>`).join('')}</div>`;
+    const seatHint=n.seat==='random'?'Your seat is drawn at random, as at a real table.':seatTip(+n.seat,+n.np);
+    h=`<h2>New game</h2><p class="muted">Set up the table. You can still change speed and difficulty from the top bar during play.</p>
+    <div class="sec">Bots</div>${seg('diff',[['easy','Easy','Friendly, lots of slips'],['medium','Medium','Sensible, fair traders'],['hard','Hard','Sharp, tough bargainers']])}
+    <div class="sec">Opponent speed</div>${seg('speed',[['slow','Slow',''],['normal','Normal',''],['fast','Fast','']])}
+    <div class="sec">Players at the table</div>${seg('np',[['2','2 players','You and 1 bot'],['3','3 players','You and 2 bots'],['4','4 players','You and 3 bots']])}
+    <p class="small muted" style="margin-top:6px">${TABLE_TIPS[+n.np]}</p>
+    <div class="sec">Your seat in the turn order</div>${seg('seat',[['random','Random',''],...[0,1,2,3].slice(0,+n.np).map(k=>[String(k),SEAT_NAMES[k],''])])}
+    <p class="small muted" style="margin-top:6px">${seatHint}</p>
+    <div class="sec">Coaching</div><div class="seg"><button type="button" class="${n.alerts?'on':''}" data-m="ng" data-f="alerts" aria-pressed="${n.alerts}"><b>Take-back prompts ${n.alerts?'on':'off'}</b><span>Offer to undo flagged mistakes</span></button></div>
+    <div class="drow">${m.cancel?'<button class="btn" data-m="ng-cancel" type="button">Cancel</button>':''}<button class="btn primary" data-m="ng-start" type="button">Start game</button></div>`;}
+  else if(m.type==='mistake'){
+    const verb={robber:'Pick another hex',offer:'Decide again'}[m.what]||'Go back';
+    h=`<h2>That wasn’t the best option</h2><p class="muted">The coach flagged this move. You can undo it and choose again, or carry on and learn from it in the review.</p>
+    ${m.warns.map(w=>`<div class="msg warn" style="margin-bottom:8px"><span class="tag">Watch out</span><h3>${w.title}</h3><p>${w.text}</p></div>`).join('')}
+    <div class="drow"><button class="btn" data-m="mk-cont" type="button">Continue anyway</button><button class="btn primary" data-m="mk-back" type="button">${verb}</button></div>`;}
+  else if(m.type==='ask'){
+    const b=G.players[m.from];const can=RES.every(r=>p.res[r]>=(m.get[r]||0));const L=lvl();
+    const lines=r=>RES.filter(x=>r[x]).map(x=>`<span class="chip-r">${sw(x)} ${r[x]} ${RL[x]}</span>`).join(' ');
+    const v={good:['good','Looks good'],fair:['tip','Roughly even'],bad:['warn','Think twice']}[m.ev.verdict];
+    const others=m.resp.map(r=>`<div class="resp"><span><b>${nm(r.j)}</b> <span class="muted">${r.act==='accept'?'would accept':r.act==='counter'?`counters: wants ${tradeText(r.counter.recv)} for ${tradeText(r.counter.give)}`:r.act==='ignored'?'not being asked':r.why}</span></span></div>`).join('');
+    h=`<h2>${b.name} asks the table</h2><p class="muted">${b.name} wants ${tradeText(m.get)} and offers ${tradeText(m.give)}. ${vp(m.from,true)} VP showing, ${handCount(b)} cards.</p>
+    <div class="offer-grid"><div><div class="sec">You’d get</div>${lines(m.give)}</div><div><div class="sec">You’d give</div>${lines(m.get)}<div class="small muted">You have ${RES.filter(x=>m.get[x]).map(x=>p.res[x]+' '+RL[x]).join(', ')}</div></div></div>
+    <div class="sec">The others</div>${others}
+    ${L.showRead?`<div class="msg ${v[0]}" style="margin-top:8px"><span class="tag">Coach’s read: ${v[1]}</span><p>${m.ev.why.length?list(m.ev.why).replace(/^./,c=>c.toUpperCase())+'.':'An even swap that doesn’t change much for either of you.'}</p></div>`:''}
+    <div class="sec">Or counter: ask for one more</div><div class="chips">${RES.filter(x=>!m.get[x]).map(x=>`<button class="chipq" type="button" data-m="as-ctr" data-r="${x}">+1 ${RL[x]}</button>`).join('')}</div>
+    <div class="sec">Or write your own counter</div>
+    <div class="ctrrow"><input id="ctrBox" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. 2 sheep for 1 brick" value="${esc(UI.ctrDraft||'')}" aria-describedby="ctrHelp"><button class="btn" id="ctrSend" data-m="as-own" type="button" disabled>Send counter</button></div>
+    <div id="ctrHelp" class="small muted">Write what you want, then “for”, then what you’ll give. Combine with “+”, e.g. <i>1 ore + 1 wheat for 2 wood</i>.</div>
+    <div class="drow"><button class="btn" data-m="as-no" type="button">Decline</button><button class="btn primary" data-m="as-yes" type="button" ${can?'':'disabled'}>Accept</button></div>`;}
+  else if(m.type==='offer'){
+    const b=G.players[m.from];const can=RES.every(r=>p.res[r]>=(m.get[r]||0));const L=lvl();
+    const lines=r=>RES.filter(x=>r[x]).map(x=>`<span class="chip-r">${sw(x)} ${r[x]} ${RL[x]}</span>`).join(' ');
+    const v={good:['good','Looks good'],fair:['tip','Roughly even'],bad:['warn','Think twice']}[m.ev.verdict];
+    h=`<h2>${b.name} offers you a trade</h2><p class="muted">${b.name} has ${vp(m.from,true)} VP showing and ${handCount(b)} cards.</p>
+    <div class="offer-grid"><div><div class="sec">You get</div>${lines(m.give)}</div><div><div class="sec">You give</div>${lines(m.get)}<div class="small muted">You have ${RES.filter(x=>m.get[x]).map(x=>p.res[x]+' '+RL[x]).join(', ')}</div></div></div>
+    ${L.showRead?`<div class="msg ${v[0]}"><span class="tag">Coach’s read: ${v[1]}</span><p>${m.ev.why.length?list(m.ev.why).replace(/^./,c=>c.toUpperCase())+'.':'An even swap that doesn’t change much for either of you.'}</p></div>`:'<p class="small muted">Hard mode: no coach read. Decide for yourself.</p>'}
+    <div class="drow"><button class="btn" data-m="of-no" type="button">Decline</button><button class="btn primary" data-m="of-yes" type="button" ${can?'':'disabled'}>Accept</button></div>`;}
+  else if(m.type==='confirmNew')h=`<h2>Start a new game?</h2><p>Your current game is saved, but starting a new one replaces it.</p><div class="drow"><button class="btn" data-m="keep" type="button">Keep playing</button><button class="btn primary" data-m="fresh" type="button">New game</button></div>`;
+  const ae=document.activeElement,hadFocus=ae&&ae.id==='ctrBox',caret=hadFocus?ae.selectionStart:null;
+  box.innerHTML=`<div class="overlay"><div class="dialog" role="dialog" aria-modal="true">${h}</div></div>`;
+  if(m.type==='ask'){updateCtrPreview();if(hadFocus){const nb=$('#ctrBox');if(nb){nb.focus();try{nb.setSelectionRange(caret,caret);}catch(e){}}}}
+}
+const RES_WORDS={wood:'wood',lumber:'wood',log:'wood',timber:'wood',tree:'wood',brick:'brick',clay:'brick',sheep:'sheep',wool:'sheep',wheat:'wheat',grain:'wheat',ore:'ore',stone:'ore',rock:'ore'};
+const NUM_WORDS={a:1,an:1,one:1,two:2,three:3,four:4,five:5,six:6};
+function parseSide(t){
+  const o={};let ok=true;
+  t.split(/\+|,|&|\band\b/i).forEach(part=>{part=part.trim().toLowerCase();if(!part)return;
+    const mm=part.match(/^(\d+|a|an|one|two|three|four|five|six)?\s*([a-z]+)$/);if(!mm){ok=false;return;}
+    const w=mm[2];const r=RES_WORDS[w]||RES_WORDS[w.replace(/e?s$/,'')]||RES_WORDS[w.replace(/s$/,'')];if(!r){ok=false;return;}
+    const n=mm[1]?(NUM_WORDS[mm[1]]||+mm[1]):1;o[r]=(o[r]||0)+n;});
+  return ok&&nCards(o)>0?o:null;
+}
+function parseCounter(t){
+  const parts=String(t).split(/\bfor\b/i);if(parts.length!==2)return null;
+  const recv=parseSide(parts[0]),give=parseSide(parts[1]);if(!recv||!give)return null;
+  if(RES.some(r=>recv[r]&&give[r]))return null;if(nCards(recv)>6||nCards(give)>6)return null;
+  return{recv,give};
+}
+function updateCtrPreview(){
+  const box=$('#ctrBox'),btn=$('#ctrSend'),help=$('#ctrHelp');if(!box||!btn||!help)return;
+  const t=box.value.trim();const p=me();
+  if(!t){btn.disabled=true;help.innerHTML='Write what you want, then “for”, then what you’ll give. Combine with “+”, e.g. <i>1 ore + 1 wheat for 2 wood</i>.';return;}
+  const c=parseCounter(t);
+  if(!c){btn.disabled=true;help.textContent='Not quite. Try a format like “2 sheep for 1 brick”: what you want, then “for”, then what you give.';return;}
+  const short=RES.filter(r=>p.res[r]<(c.give[r]||0));
+  if(short.length){btn.disabled=true;help.textContent=`You’d get ${tradeText(c.recv)} and give ${tradeText(c.give)}, but you only have ${short.map(r=>p.res[r]+' '+RL[r]).join(', ')}.`;return;}
+  btn.disabled=false;help.textContent=`You’d get ${tradeText(c.recv)} and give ${tradeText(c.give)}.`;
+}
+function offerKey(m){return RES.map(r=>(m.give[r]||0)+'/'+(m.get[r]||0)).join(',');}
+function askCache(){if(!G.askCache||G.askCache.turn!==G.turn)G.askCache={turn:G.turn,map:{}};return G.askCache.map;}
+function tableResponses(m){
+  return G.players.filter(o=>o.bot).map(o=>{const d=decide(o,0,m.give,m.get);if(d.act==='decline')obs(o.i,'refusedYou');obs(o.i,d.act==='accept'?'accepts':d.act==='counter'?'counters':'declines');
+    say(o.i,d.line);return{i:o.i,ok:d.act==='accept',counter:d.counter||null,why:d.act==='counter'?`counters: ${d.counter?tradeText(d.counter.recv)+' for '+tradeText(d.counter.give):''}`:d.why};});
+}
+function accuracyHtml(){
+  const gs=(G.grades||[]);if(!gs.length)return'';
+  const order=['Best','Good','Inaccuracy','Mistake','Blunder'],cls={Best:'g-best',Good:'g-good',Inaccuracy:'g-inacc',Mistake:'g-mist',Blunder:'g-blun'};
+  const cnt=o=>gs.filter(g=>g.label===o).length;
+  const avg=gs.reduce((a,g)=>a+g.loss,0)/gs.length;const acc=Math.max(0,Math.round(100-avg*6));
+  const worst=gs.filter(g=>g.loss>=2.5).sort((a,b)=>b.loss-a.loss).slice(0,3);
+  return `<div class="sec">Move accuracy: ${acc}%</div><div class="acc">${order.map(o=>`<div><b>${cnt(o)}</b><span class="gpill ${cls[o]}">${o}</span></div>`).join('')}</div>
+  <p class="small muted">Graded ${gs.length} decisions against simulated play. Average win chance given up per move: ${avg.toFixed(1)}%.</p>
+  ${worst.length?'<ul class="review small">'+worst.map(g=>`<li><b>${g.label}</b> (round ${Math.max(1,Math.ceil(g.t/NP()))}, ${g.what}): cost ${g.loss}%${g.alt?`; better was ${g.alt}`:''}.</li>`).join('')+'</ul>':''}`;
+}
+function reviewHtml(){
+  const won=G.winner===0;
+  const rows=G.players.map(p=>{const s=G.verts.filter(v=>v.owner===p.i&&!v.city).length,c=G.verts.filter(v=>v.owner===p.i&&v.city).length;const vc=p.dev.filter(d=>d.type==='vp').length;
+    return{p,v:vp(p.i),txt:`${s} settl. · ${c} cities${G.lr===p.i?' · road':''}${G.la===p.i?' · army':''}${vc?' · '+vc+' VP card'+(vc>1?'s':''):''}`};}).sort((a,b)=>b.v-a.v);
+  const cats=Object.entries(G.cats).sort((a,b)=>b[1]-a[1]);
+  const labels={weakSpot:'Weaker starting spots',missedBuild:'Turns ended with a build available',missedTrade:'Builds a bank trade would have unlocked',bigHand:'Times caught holding 8+ cards',robberSelf:'Robber on your own hex',robberWeak:'Low-impact robber moves',feedLeader:'Trades with a leading player',brokePromise:'Promises broken',spentWrong:'Cards spent on a lesser build',badDeal:'Bad trade offers accepted',missedDeal:'Build-completing offers declined'};
+  const tips=cats.slice(0,3).map(([k])=>REVIEW_TIPS[k]).filter(Boolean);
+  if(tips.length<3)['Start on 6s and 8s with three different resources, and plan your second settlement around what the first lacks.','Cities give the most points per card in the mid game. Ore and Wheat are what get you there.','Watch the leader’s visible points and target them with the robber and your refusals to trade.'].forEach(t=>{if(tips.length<3&&!tips.includes(t))tips.push(t);});
+  return `<h2>${won?'You won':nm(G.winner)+' won'} in ${Math.ceil(G.turn/NP())} rounds</h2><p class="muted">Final scores, including hidden Victory Point cards.</p>
+  <table class="over-scores"><thead><tr><th>Player</th><th>VP</th><th>How</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b>${r.p.name}</b></td><td>${r.v}</td><td class="small">${r.txt}</td></tr>`).join('')}</tbody></table>
+  <div class="sec">Your game in numbers</div>
+  <p class="small">Cards collected from rolls: <b>${G.stats.produced}</b> · lost to 7s: <b>${G.stats.lost7}</b> · stolen from you: <b>${G.stats.stolenFrom}</b> · you stole: <b>${G.stats.stole}</b> · trades with players: <b>${G.stats.trades}</b>${G.econ&&G.econ.pstats?` · promises kept/broken: <b>${G.econ.pstats.kept}/${G.econ.pstats.broken}</b>`:''} · take-backs used: <b>${G.takebacks||0}</b> · bots: <b>${LEVELS[G.diff||'medium'].label}</b></p>
+  ${accuracyHtml()}
+  ${personalityHtml()}
+  <div class="sec">What the coach flagged</div>
+  ${cats.length?'<ul class="review small">'+cats.map(([k,v])=>`<li>${labels[k]||k}: <b>${v}</b></li>`).join('')+'</ul>':'<p class="small">No mistakes flagged. Clean game.</p>'}
+  <div class="sec">Work on next game</div><ol class="review">${tips.map(t=>`<li>${t}</li>`).join('')}</ol>
+  <div class="drow"><button class="btn" data-m="close" type="button">Look at the board</button><button class="btn primary" data-act="new" type="button">Play again</button></div>`;
+}
+const RULES_HTML=`<div class="rules">
+<h3>Goal</h3><p>First to 10 victory points (VP) on their own turn wins. Settlement 1, city 2, Longest Road 2, Largest Army 2, each VP card 1.</p>
+<h3>Build costs</h3><table class="ctab"><tbody>
+<tr><td>Road</td><td>${costChips(COST.road)}</td><td class="muted">Wood, Brick</td></tr>
+<tr><td>Settlement</td><td>${costChips(COST.settlement)}</td><td class="muted">Wood, Brick, Sheep, Wheat</td></tr>
+<tr><td>City</td><td>${costChips(COST.city)}</td><td class="muted">2 Wheat, 3 Ore</td></tr>
+<tr><td>Dev card</td><td>${costChips(COST.dev)}</td><td class="muted">Sheep, Wheat, Ore</td></tr></tbody></table>
+<h3>A turn</h3><ul><li>Roll two dice. Hexes with that number pay 1 card per adjacent settlement, 2 per city.</li><li>Trade with the bank (4:1, or 3:1 / 2:1 with a harbour) and offer trades to players.</li><li>Build as much as you can afford, in any order, then end your turn.</li></ul>
+<h3>Placing</h3><ul><li>Settlements go on corners, never next to another settlement (the distance rule).</li><li>After setup, settlements must touch one of your roads. Roads extend from your roads or buildings, and an opponent’s building blocks your road from passing through.</li></ul>
+<h3>Rolling a 7</h3><p>No production. Everyone with more than 7 cards discards half, rounded down. The roller moves the robber to a new hex, which stops producing, and steals a random card from someone with a building there.</p>
+<h3>Development cards</h3><ul><li>Knight (14): move the robber and steal. 3+ knights played earns Largest Army.</li><li>Road Building (2), Year of Plenty (2), Monopoly (2).</li><li>Victory Point (5): hidden, counts automatically.</li><li>One played per turn, at any point, never on the turn you bought it.</li></ul>
+<h3>Longest Road</h3><p>The first unbroken road of 5+ segments earns 2 VP. A longer road takes it away.</p>
+<h3>Reading the numbers</h3><p>Dots under a number count its chances out of 36. 6 and 8 have five dots each (red), 2 and 12 have one. Total dots on a corner are its pips: a good starting corner has 10 or more.</p>
+<h3>Principles strong players follow</h3><ul>
+<li>Start on high pips across three resources; avoid the desert.</li>
+<li>Get Wheat and Ore for cities, Wood and Brick for expansion. Missing one group means a harbour or steady trading.</li>
+<li>Expand early. The best corners vanish within a few rounds.</li>
+<li>Cities are the most efficient points once you have Ore and Wheat.</li>
+<li>Keep your hand at 7 or fewer between turns.</li>
+<li>Robber the leader’s best hex. Don’t trade with a player at 7+ VP.</li></ul></div>`;
+
+/* ---------- Events ---------- */
+function bindEvents(){
+  $('#board').addEventListener('click',ev=>{const t=ev.target.closest('[data-v],[data-e],[data-h]');if(!t||!G)return;
+    if(t.dataset.v!=null)onVert(+t.dataset.v);else if(t.dataset.e!=null)onEdge(+t.dataset.e);else onHex(+t.dataset.h);});
+  document.addEventListener('click',ev=>{
+    const a=ev.target.closest('[data-act]');
+    if(a){const k=a.dataset.act;
+      if(k==='roll')userRoll();else if(k==='end')endTurn();else if(k==='hint')giveHint();
+      else if(k==='cancel'){UI.mode=null;G.freeRoads=0;render();}
+      else if(k==='new')openNewGameMenu();else if(k==='review'){UI.modal={type:'over'};render();}
+      else if(k==='bank'&&myTurnFree()&&G.rolled){rule('trade');const tr=UI.hint&&UI.hint.trade;UI.modal={type:'bank',give:tr?tr.give:null,get:tr?tr.get:null};UI.hint=null;render();}
+      else if(k==='trade'&&myTurnFree()&&G.rolled){rule('trade');const pt=UI.hint&&UI.hint.ptrade;const m={type:'trade',give:pt?{...pt.give}:{},get:pt?{...pt.get}:{},resp:null,rec:pt?pt.who:null};if(pt){const c=askCache(),key=offerKey(m);m.resp=c[key]||(c[key]=tableResponses(m));}UI.modal=m;UI.hint=null;render();}
+      return;}
+    const b=ev.target.closest('[data-build]');if(b){startBuild(b.dataset.build);return;}
+    const d=ev.target.closest('[data-dev]');if(d){userPlayDev(d.dataset.dev);return;}
+    const tb=ev.target.closest('[data-tab]');if(tb){UI.tab=tb.dataset.tab;renderTabs();if(UI.tab==='ask'){const b=$('#askBox');if(b&&!b.disabled)b.focus();}return;}
+    const ci=ev.target.closest('[data-chat]');if(ci){const b=$('#chatBox');b.value=ci.dataset.chat;b.focus();return;}
+    const cq=ev.target.closest('[data-q]');if(cq){askSend(cq.dataset.q);return;}
+    if(ev.target.closest('#askStop')){if(ASK.ctl)ASK.ctl.abort();return;}
+    if(ev.target.closest('#askClear')){if(!ASK.busy){ASK.turns=[];renderAsk();}return;}
+    const m=ev.target.closest('[data-m]');if(m)onModal(m);
+  });
+  document.addEventListener('input',ev=>{if(ev.target.id==='ctrBox'){UI.ctrDraft=ev.target.value;updateCtrPreview();}});
+  document.addEventListener('keydown',ev=>{if(ev.target.id==='ctrBox'&&ev.key==='Enter'){ev.preventDefault();const b=$('#ctrSend');if(b&&!b.disabled)b.click();}});
+  document.addEventListener('submit',ev=>{if(ev.target.id==='chatForm'){ev.preventDefault();const b=$('#chatBox');if(chatSend(b.value,$('#chatTo').value))b.value='';}});
+  document.addEventListener('submit',ev=>{if(ev.target.id==='askForm'){ev.preventDefault();const b=$('#askBox');const q=b.value;if(askSend(q))b.value='';}});
+  document.addEventListener('keydown',ev=>{if(ev.target.id==='askBox'&&ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();const b=ev.target;if(askSend(b.value))b.value='';}});
+  document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&UI&&UI.mode&&['road','settlement','city'].includes(UI.mode)){UI.mode=null;render();}});
+  $('#speed').value=speed;
+  $('#diff').value=DIFF;$('#alerts').checked=ALERTS;
+  $('#diff').addEventListener('change',e=>{DIFF=e.target.value;try{localStorage.setItem('hl-diff',DIFF);}catch(err){}if(G){G.diff=DIFF;coach('tip',`Bots set to ${LEVELS[DIFF].label}`,{easy:'Bots make plenty of human mistakes: forgetting to build, over-building roads, buying cards on a whim and random robber moves. They trade generously.',medium:'Bots play sensibly with occasional human slips, and drive a fair bargain.',hard:'Bots plan by what they can build fastest, manage their hands, target the leader, refuse you at 7 points and drive hard bargains. Trade offers come without a coach read.'}[DIFF]);render();}});
+  $('#alerts').addEventListener('change',e=>{ALERTS=e.target.checked;try{localStorage.setItem('hl-alerts',ALERTS?'on':'off');}catch(err){}});
+  $('#speed').addEventListener('change',e=>{speed=e.target.value;try{localStorage.setItem('hl-speed',speed);}catch(err){}});
+  $('#newGame').addEventListener('click',()=>{if(inProgress()){UI.prevModal=UI.modal;UI.modal={type:'confirmNew'};renderModal();}else openNewGameMenu();});
+  $('#legend').innerHTML=RES.map(r=>`<span><span class="cc" style="background:${TCOL[r]}"></span>${TERR[r]} → ${RL[r]}</span>`).join('')+'<span>Red numbers (6, 8) roll most often</span>';
+}
+function onModal(el){
+  const m=UI.modal;if(!m)return;const k=el.dataset.m,r=el.dataset.r,p=me();
+  const step=(obj,max)=>{const v=(obj[r]||0)+(+el.dataset.d);if(v>=0&&v<=max)obj[r]=v;};
+  if(k==='close'){UI.modal=null;render();return;}
+  if(k==='mk-back'){if(m.async){UI.modal=null;resume('mistake','back');return;}restoreSnap(m.snap);UI.modal=null;if(m.back)m.back();render();return;}
+  if(k==='mk-cont'){if(m.async){UI.modal=null;resume('mistake','cont');return;}UI.modal=null;if(m.cont)m.cont();checkWin();render();return;}
+  if(k==='of-yes'){resume('offer','accept');return;}
+  if(k==='as-yes'){resume('ask',{act:'accept'});return;}
+  if(k==='as-no'){resume('ask',{act:'decline'});return;}
+  if(k==='as-own'){const c=parseCounter(UI.ctrDraft||'');if(!c||!RES.every(x=>p.res[x]>=(c.give[x]||0)))return;UI.ctrDraft='';resume('ask',{act:'counter',counter:c});return;}
+  if(k==='as-ctr'){const g={...m.give};g[r]=(g[r]||0)+1;resume('ask',{act:'counter',counter:{recv:g,give:{...m.get}}});return;}
+  if(k==='of-no'){resume('offer','decline');return;}
+  if(k==='keep'){UI.modal=UI.prevModal||null;render();return;}
+  if(k==='fresh'){openNewGameMenu(true);return;}
+  if(k==='ng'){const f=el.dataset.f,v=el.dataset.v;m.ng[f]=f==='alerts'?!m.ng.alerts:v;if(f==='np'&&m.ng.seat!=='random'&&+m.ng.seat>=+v)m.ng.seat='random';render();return;}
+  if(k==='ng-cancel'){UI.modal=UI.prevModal&&UI.prevModal.type!=='confirmNew'?UI.prevModal:null;render();return;}
+  if(k==='ng-start'){startGame(true,{...m.ng});return;}
+  if(k==='dsc'){step(m.sel,p.res[r]);}
+  else if(k==='dsc-ok'){RES.forEach(x=>{const n=m.sel[x]||0;p.res[x]-=n;G.bank[x]+=n;});UI.modal=null;render();resume('discard');return;}
+  else if(k==='steal'){UI.modal=null;resume('steal',+el.dataset.p);return;}
+  else if(k==='pl'){step(m.sel,G.bank[r]);}
+  else if(k==='pl-ok'){useDev(p,'plenty');const got=[];RES.forEach(x=>{const n=m.sel[x]||0;if(n){give(p,x,n);got.push(n+' '+RL[x]);}});log(`You play Year of Plenty (${got.join(', ')})`);UI.modal=null;checkWin();render();return;}
+  else if(k==='mono'){useDev(p,'mono');let tot=0;G.players.forEach(o=>{if(o.i===0)return;if(o.res[r])trustAdj(o.i,0,-0.35*(0.5+TR(o.i).grudge));tot+=o.res[r];p.res[r]+=o.res[r];o.res[r]=0;});
+    log(`You play Monopoly on ${RL[r]} and collect ${tot}`);coach(tot>=3?'good':'tip','Monopoly',tot>=3?`You collected ${tot} ${RL[r]}.`:`Only ${tot} ${RL[r]} came back. Monopoly pays best on a resource the others have just been collecting, often right after a big roll.`);UI.modal=null;render();return;}
+  else if(k==='bg'){m.give=r;if(m.get===r)m.get=null;}
+  else if(k==='bt'){m.get=r;}
+  else if(k==='b-ok'){const pre=JSON.stringify(G);const n=ratio(0,m.give);doBankTrade(p,m.give,m.get);log(`You trade ${n} ${RL[m.give]} to the bank for ${RL[m.get]}`);UI.modal=null;
+    gradeMove('bank trade',{kind:'none',base:JSON.stringify(G)},[{kind:'none',base:pre,label:'not making that trade'}]);render();return;}
+  else if(k==='tg'){step(m.give,p.res[r]);m.resp=null;m.rec=null;}
+  else if(k==='tw'){step(m.get,4);m.resp=null;m.rec=null;}
+  else if(k==='t-ask'){const key=offerKey(m);const c=askCache();
+    if(c[key]){m.resp=c[key];m.repeat=true;}else{m.resp=tableResponses(m);c[key]=m.resp;m.repeat=false;}}
+  else if(k==='t-do'||k==='t-ctr'){const snap=JSON.stringify(G),cid=G.cid||0;const o=G.players[+el.dataset.p];const rr=(m.resp||[]).find(x=>x.i===o.i);if(!rr){render();return;}
+    if(k==='t-ctr'){if(!rr.counter){render();return;}m.give={...rr.counter.recv};m.get={...rr.counter.give};}
+    if(!RES.every(x=>p.res[x]>=(m.give[x]||0)&&o.res[x]>=(m.get[x]||0))){m.resp=null;render();return;}
+    trustAdj(o.i,0,0.1*(0.5+TR(o.i).coop));allianceHonour(o.i);
+    RES.forEach(x=>{const g=m.give[x]||0,w=m.get[x]||0;p.res[x]+=w-g;o.res[x]+=g-w;});
+    G.stats.trades++;G.askCache=null;log(`You trade with ${o.name}: give ${RES.filter(x=>m.give[x]).map(x=>m.give[x]+' '+RL[x]).join(', ')} for ${RES.filter(x=>m.get[x]).map(x=>m.get[x]+' '+RL[x]).join(', ')}`);
+    if(vp(o.i,true)>=7)coach('warn',`You helped ${o.name}`,`${o.name} has ${vp(o.i,true)} visible VP. Trading with the leader late in the game often hands them the win.`,'feedLeader');
+    UI.modal=null;const post=JSON.stringify(G);const grade=()=>gradeMove(`trade with ${o.name}`,{kind:'none',base:post},[{kind:'none',base:snap,label:'not making that trade'}]);
+    if(mistakeCheck(snap,cid,null,grade))return;grade();render();return;}
+  render();
+}
+/* ---------- Ask Claude ---------- */
+const ASK={turns:[],busy:false,ctl:null};
+let SAMPLE=null,SAMPLE_STATE='loading';
+const ASK_SUGGEST=['What’s my best move right now?','Where should I build my next settlement?','Who should I target with the robber?','What strategy suits my position?','Should I trade, and for what?'];
+function esc(t){return String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function mdLite(t){
+  const lines=esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').split('\n');let out='',inList=false;
+  for(const raw of lines){const l=raw.trim();const li=l.match(/^([-*•]|\d+[.)])\s+(.*)/);
+    if(li){if(!inList){out+='<ul>';inList=true;}out+=`<li>${li[2]}</li>`;continue;}
+    if(inList){out+='</ul>';inList=false;}
+    if(!l)continue;const h=l.match(/^#+\s*(.*)/);out+=h?`<p><b>${h[1]}</b></p>`:`<p>${l}</p>`;}
+  if(inList)out+='</ul>';return out;
+}
+function cornerName(v){
+  const parts=v.hexes.map(h=>G.hexes[h]).map(H=>H.res==='desert'?'Desert':`${H.num} ${RL[H.res]}`);
+  let s=`corner touching ${parts.join(' / ')} (${vPips(v)} pips)`;
+  if(v.port)s+=v.port==='any'?' on a 3:1 harbour':` on a 2:1 ${RL[v.port]} harbour`;
+  return s;
+}
+function boardBrief(){
+  const L=[];const p=me();
+  L.push(G.phase==='setup'?`PHASE: setup, placement ${G.setupIdx+1} of ${G.setupOrder.length} (order ${G.order.map(nm).join(', ')}, then reversed; you are seat ${G.seat+1}). Second settlements pay one card per adjacent hex.`
+    :`PHASE: round ${Math.ceil(G.turn/NP())}. It is ${G.current===0?'the player’s (You) turn':nm(G.current)+'’s turn'}${G.current===0?(G.rolled?`, dice already rolled (${G.dice[0]+G.dice[1]})`:', dice not rolled yet'):''}.${G.winner!=null?' GAME OVER, winner: '+nm(G.winner)+'.':''}`);
+  L.push('HEXES (resource number): '+G.hexes.map(h=>(h.res==='desert'?'Desert':`${RL[h.res]} ${h.num}`)+(h.id===G.robber?' [ROBBER]':'')).join('; '));
+  L.push('HARBOURS: '+G.ports.map(pt=>`${pt.type==='any'?'3:1':'2:1 '+RL[pt.type]} on the coast by ${[...new Set(pt.v.flatMap(i=>G.verts[i].hexes))].map(h=>G.hexes[h]).map(H=>H.res==='desert'?'Desert':`${H.num} ${RL[H.res]}`).join(' / ')}`).join('; '));
+  G.players.forEach(o=>{
+    const b=G.verts.filter(v=>v.owner===o.i).map(v=>`${v.city?'City':'Settlement'} on ${cornerName(v)}`);
+    const head=o.i===0?`YOU: ${vp(0)} VP (${vp(0,true)} visible)`:`${o.name.toUpperCase()}: ${vp(o.i,true)} visible VP, ${handCount(o)} cards in hand (contents hidden), ${o.dev.length} unplayed dev cards`;
+    L.push(`${head}; knights played ${o.knights}; longest road ${o.road}; pieces left ${o.roadsLeft} roads/${o.settLeft} settlements/${o.cityLeft} cities.\n  Buildings: ${b.length?b.join('; '):'none'}`);
+  });
+  L.push(`YOUR HAND: ${RES.map(r=>`${p.res[r]} ${RL[r]}`).join(', ')}. Bank trade rates: ${RES.map(r=>`${RL[r]} ${ratio(0,r)}:1`).join(', ')}.`);
+  L.push(`YOUR DEV CARDS: ${p.dev.length?p.dev.map(d=>DEVNAME[d.type]+(d.turn===G.turn?' (bought this turn, not playable yet)':'')).join(', '):'none'}${p.playedDev?' (already played one this turn)':''}.`);
+  L.push(`LONGEST ROAD: ${G.lr==null?'unclaimed':nm(G.lr)}. LARGEST ARMY: ${G.la==null?'unclaimed':nm(G.la)}. Dev deck: ${G.deck.length} left. Bank: ${RES.map(r=>`${G.bank[r]} ${RL[r]}`).join(', ')}.`);
+  const setup=G.phase==='setup';
+  const spots=legalSpots(0,setup).sort((a,b)=>spotScore(b,0)-spotScore(a,0)).slice(0,setup?10:8);
+  L.push(`${setup?'BEST OPEN CORNERS (legal for a starting settlement)':'CORNERS YOU CAN SETTLE NOW (touching your roads)'}: ${spots.length?spots.map(cornerName).join('; '):'none'}.`);
+  if(!setup){const reach=G.verts.filter(v=>spotFree(v)&&!canSettle(0,v,false)&&v.adj.some(a=>G.verts[a].edges.some(e=>G.edges[e].owner===0))).sort((a,b)=>spotScore(b,0)-spotScore(a,0)).slice(0,6);
+    L.push(`OPEN CORNERS ONE ROAD AWAY: ${reach.length?reach.map(cornerName).join('; '):'none'}.`);}
+  const tot=G.rollHist.reduce((a,b)=>a+b,0);
+  L.push(`RECENT EVENTS (newest first): ${G.log.slice(0,14).map(l=>l.text).join(' | ')}`);
+  if(tot)L.push(`ROLLS SO FAR: ${tot}.`);
+  return L.join('\n');
+}
+function askInstructions(){
+  return `You are a friendly, expert coach for the classic hex-island trading game (standard base-game rules, played here with ${NP()} players: settlements, cities, roads, development cards, robber on 7, Longest Road, Largest Army, first to 10 VP). The player ("You", red) is learning and is asking about the game below against ${NP()-1} bot${NP()>2?'s':''}.
+
+How to answer:
+- Ground every recommendation in THIS game state. Name corners by the hexes they touch (e.g. "the 6 Wheat / 8 Ore / 3 Sheep corner") and hexes by resource and number.
+- Explain the reasoning briefly (pips/probability, resource balance, who is leading), so the player learns the principle, not just the move.
+- Opponents' hand contents are hidden; reason only from counts and what they produce.
+- If the question is general (rules or strategy), answer it generally and then relate it to this game if useful.
+- Keep it under about 170 words unless asked for more. Short paragraphs or a few bullets, no headings, no tables.
+
+CURRENT GAME STATE:
+${boardBrief()}`;
+}
+function askShell(){
+  return `<div class="ask">
+    <div id="askMsgs" class="feed" aria-live="polite"></div>
+    <div class="chips" id="askChips"></div>
+    <form id="askForm"><label class="small muted" for="askBox">Ask about your position, a rule or a strategy</label>
+      <textarea id="askBox" rows="2" placeholder="e.g. Should I build a city or buy a development card?"></textarea>
+      <div class="askrow"><span class="small muted" id="askNote">Claude sees the board, your hand and the scores. Opponents’ hands stay hidden.</span>
+      <button class="btn" type="button" id="askClear">Clear</button><button class="btn" type="button" id="askStop" hidden>Stop</button><button class="btn primary" type="submit" id="askGo">Ask</button></div></form></div>`;
+}
+function renderAsk(){
+  const box=$('#askMsgs');if(!box)return;
+  const off=SAMPLE_STATE==='off';
+  if(!ASK.turns.length)box.innerHTML=`<div class="msg tip"><span class="tag">${off?'Unavailable':'Ask Claude'}</span><p>${off?'Claude couldn’t be reached from this view. Reload the page inside Claude (or the Claude app) and try again. You can also ask the same questions in your Claude chat.':'Ask anything about this game: your best move, where to settle, who to rob, or how a rule works. Answers use the live board.'}</p></div>`;
+  else box.innerHTML=ASK.turns.map((t,i)=>t.role==='user'?`<div class="bubble q">${esc(t.content)}</div>`
+    :`<div class="bubble a${t.err?' err':''}" data-i="${i}">${t.pending&&!t.content?'<p class="muted">Thinking…</p>':mdLite(t.content)}${t.note?`<p class="small muted">${esc(t.note)}</p>`:''}</div>`).join('');
+  box.scrollTop=box.scrollHeight;
+  const dis=ASK.busy||off||SAMPLE_STATE==='loading';
+  $('#askChips').innerHTML=ASK_SUGGEST.map(q=>`<button class="chipq" type="button" data-q="${esc(q)}" ${dis?'disabled':''}>${esc(q)}</button>`).join('');
+  $('#askGo').disabled=dis;$('#askBox').disabled=off;$('#askStop').hidden=!ASK.busy;$('#askClear').hidden=ASK.busy||!ASK.turns.length;
+}
+const ASK_ERR={not_granted:'Claude wasn’t allowed for this page, so questions are off for this visit.',sampling_disabled:'Claude isn’t available for this account.',rate_limited:'Too many questions too fast, or you’ve hit a usage limit. Try again in a little while.',session_expired:'You’ve been signed out. Sign in again and retry.',refused:'Claude couldn’t answer that one. Try rephrasing.',empty_completion:'No answer came back. Try asking a simpler question.',prompt_too_large:'The question was too long. Try a shorter one.'};
+function askSend(q){
+  q=(q||'').trim();if(!q||ASK.busy||!SAMPLE||!G)return false;
+  ASK.turns.push({role:'user',content:q});
+  const hist=ASK.turns.filter(t=>!t.err&&!t.pending&&t.content).slice(-8);
+  while(hist.length&&hist[0].role!=='user')hist.shift();
+  const ans={role:'assistant',content:'',pending:true};ASK.turns.push(ans);
+  ASK.busy=true;const ctl=new AbortController();ASK.ctl=ctl;renderAsk();
+  const paint=()=>{const el=document.querySelector(`#askMsgs [data-i="${ASK.turns.indexOf(ans)}"]`);if(el){el.innerHTML=mdLite(ans.content);const b=$('#askMsgs');b.scrollTop=b.scrollHeight;}};
+  SAMPLE([{role:'user',content:askInstructions()},...hist],{cache:false,signal:ctl.signal,onText:({text})=>{ans.content=text;paint();}})
+    .then(r=>{ans.content=r.text;if(r.truncated)ans.note='Answer cut short. Ask for less at a time.';})
+    .catch(e=>{const code=e&&e.code;ans.content=(e&&e.text)||'';
+      if(code==='cancelled'){if(!ans.content)ans.content='Stopped.';}
+      else if(code==='refused'){ans.content='';ans.err=true;ans.note=ASK_ERR.refused;}
+      else{if(!ans.content)ans.err=true;ans.note=ASK_ERR[code]||'Something went wrong reaching Claude. Try again.';}
+      if(code==='not_granted'||code==='sampling_disabled'||code==='not_declared'||code==='capability_disabled'){SAMPLE_STATE='off';}})
+    .finally(()=>{ans.pending=false;if(!ans.content&&!ans.note){ans.err=true;ans.note='No answer.';}if(ans.err&&!ans.content)ans.content=ans.note,ans.note='';
+      ASK.busy=false;ASK.ctl=null;if(UI.tab==='ask')renderAsk();});
+  return true;
+}
+async function initSample(){
+  try{if(window.claude&&typeof window.claude.use==='function')SAMPLE=await window.claude.use('sample');}catch(e){SAMPLE=null;}
+  SAMPLE_STATE=SAMPLE?'ready':'off';
+  if(!SAMPLE&&window.__STANDALONE){const t=document.querySelector('.tab[data-tab="ask"]');if(t)t.hidden=true;if(UI&&UI.tab==='ask'){UI.tab='coach';renderTabs();}}
+  else if(UI&&UI.tab==='ask')renderAsk();
+}
+let SEATPREF='random',NPPREF='4';try{SEATPREF=localStorage.getItem('hl-seat')||'random';NPPREF=localStorage.getItem('hl-np')||'4';}catch(e){}
+function openNewGameMenu(fromConfirm){
+  const cancel=!!(G&&!G.preview);UI.prevModal=fromConfirm?null:UI.modal;
+  UI.modal={type:'newgame',cancel,ng:{diff:DIFF,speed,seat:SEATPREF,alerts:ALERTS,np:NPPREF}};render();
+}
+function startGame(fresh,opts){
+  GAME_ID++;waits={};
+  UI={mode:null,setupVert:null,busy:false,modal:null,hint:null,tab:'coach',unread:false,savedAt:null,lastGrade:null};
+  WP={key:null,val:null,pending:false,stale:false,tok:null};ENGQ.length=0;
+  const s=fresh?null:loadSave();
+  if(s){
+    G=s.G;if(!G.order){G.order=[0,1,2,3];G.seat=0;}if(!G.diff)G.diff=DIFF;DIFF=G.diff;const ds=document.getElementById('diff');if(ds)ds.value=DIFF;
+    const when=new Date(s.savedAt);
+    coach('tip','Welcome back',`Your game from ${when.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'})} at ${when.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})} is restored, at the start of your last turn or action. Use New game to start over.`);
+    render();runGame(true);
+  }else if(!opts){
+    newGame(0,+NPPREF);G.preview=true;UI.modal={type:'newgame',cancel:false,ng:{diff:DIFF,speed,seat:SEATPREF,alerts:ALERTS,np:NPPREF}};render();
+  }else{
+    DIFF=opts.diff;speed=opts.speed;ALERTS=!!opts.alerts;SEATPREF=opts.seat;NPPREF=String(opts.np||4);
+    try{localStorage.setItem('hl-diff',DIFF);localStorage.setItem('hl-speed',speed);localStorage.setItem('hl-alerts',ALERTS?'on':'off');localStorage.setItem('hl-seat',SEATPREF);localStorage.setItem('hl-np',NPPREF);}catch(e){}
+    const ds=document.getElementById('diff');if(ds)ds.value=DIFF;const sp=document.getElementById('speed');if(sp)sp.value=speed;const al=document.getElementById('alerts');if(al)al.checked=ALERTS;
+    clearSave();const np=+NPPREF;const seat=opts.seat==='random'?rnd(np):Math.min(+opts.seat,np-1);newGame(seat,np);
+    coach('tip',`${np} players: you’re ${SEAT_NAMES[seat]} in the turn order`,`${seatTip(seat,np)} Turn order: ${G.order.map(nm).join(', ')}. ${TABLE_TIPS[np]}`);
+    render();runGame(false);
+  }
+}
+if(typeof document!=='undefined'&&!window.__NODOM){bindEvents();startGame();initSample();}
+</script>
+</body></html>
